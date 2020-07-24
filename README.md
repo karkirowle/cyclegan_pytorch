@@ -33,5 +33,4 @@ multiples of 4
  ### Problematic points that should be checked
  
  - TODO: DatasetLoader: is it called only once? (i.e is sampling in time happening every epoch?)
- - TODO: MCEP normalisation is not done I think
- 
+ - TODO: Pitch conversion (normalisation/denormalisation or CycleGAN-based) 
