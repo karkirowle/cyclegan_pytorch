@@ -40,12 +40,10 @@ class ConvLayer(nn.Module):
         self.conv = None
 
     def forward(self, input):
-        print("convlayer",input.shape)
 
         out = self.conv(input)
 
         if (self.cut_last_element_X) & (len(input.shape) == 4):
-            print("trunc")
             out = out[:,:,:-1,:]
         if (self.cut_last_element_Y) & (len(input.shape) == 4):
             out = out[:,:,:,:-1]
