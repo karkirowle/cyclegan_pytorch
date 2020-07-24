@@ -51,12 +51,13 @@ SF1_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(d
 TF2_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["TF2"],training=False))))
 
 # We need to fetch datasetwise normalisation parameters and this seems to be the best point for it
-SF1_lengths = [len(y) for y in SF1_train_data_source]
-SF1_data_meanstd = meanstd(SF1_train_data_source, SF1_lengths)
-TF2_lengths = [len(y) for y in TF2_train_data_source]
-TF2_data_meanstd = meanstd(TF2_train_data_source, TF2_lengths)
-#meanstd_1 = (0,1)
-#meanstd_2 = (0,1)
+#SF1_lengths = [len(y) for y in SF1_train_data_source]
+#SF1_data_meanstd = meanstd(SF1_train_data_source, SF1_lengths)
+#TF2_lengths = [len(y) for y in TF2_train_data_source]
+#TF2_data_meanstd = meanstd(TF2_train_data_source, TF2_lengths)
+# TODO: solve the normalisation eventually
+meanstd_1 = (0,1)
+meanstd_2 = (0,1)
 
 train_dataset = MCEPWrapper(SF1_train_data_source, TF2_train_data_source, SF1_data_meanstd, TF2_data_meanstd, mfcc_only=True)
 test_dataset = MCEPWrapper(SF1_test_data_source, TF2_test_data_source, SF1_data_meanstd, TF2_data_meanstd, mfcc_only=False)
