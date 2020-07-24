@@ -5,11 +5,11 @@ from nnmnkwii.datasets import FileSourceDataset
 import librosa
 import numpy as np
 
-from utils import world_decompose
+from utils import world_decompose, world_encode_spectral_envelop
 
 from torch.utils.data import Dataset
 import torch
-
+import matplotlib.pyplot as plt
 # Basically, you have to be paranoid about the alignment of various datasources
 # Or you hstacl
 
@@ -25,9 +25,12 @@ class VCC2016DataSource(VCC2016Super):
 
         f0, _, sp, ap = world_decompose(wav,sr)
 
+        mcep = world_encode_spectral_envelop(sp, sr, dim=24)
+
         # Extending to 2D to stack
         f0 = f0[:,None]
-        features = np.hstack((f0, sp, ap))
+
+        features = np.hstack((f0, mcep, ap))
 
         return features
 
@@ -42,32 +45,31 @@ class MCEPWrapper(Dataset):
         self.num_frames = num_frames
 
     def __len__(self):
-        return len(self.speech)
+        assert len(self.input_file_source) == len(self.output_file_source)
+        return len(self.input_file_source)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
         # This snippet is responsible for sampling the frames
-        frames_A = self.input_file_source[idx,:,:].shape[2]
+
+        frames_A = self.input_file_source[idx].shape[0]
         assert frames_A >= self.num_frames
 
         start_A = np.random.randint(frames_A - self.num_frames + 1)
         end_A = start_A + self.num_frames
 
 
-        frames_B = self.output_file_source[idx,:,:].shape[2]
+        frames_B = self.output_file_source[idx].shape[0]
         assert frames_B >= self.num_frames
-
         start_B = np.random.randint(frames_B - self.num_frames + 1)
         end_B = start_B + self.num_frames
 
         # Second index: selecting 24 MCEP features
         # Third index: randomly samping 128 frames
-        input_tensor = torch.FloatTensor(self.input_file_source[idx,1:25,start_A:end_A])
-        output_tensor = torch.FloatTensor(self.output_file_source[idx,1:25,start_B:end_B])
-        print("check", input_tensor.shape, output_tensor.shape)
-        print("check", type(input_tensor), type(output_tensor))
+        input_tensor = torch.FloatTensor(self.input_file_source[idx][start_A:end_A,1:25])
+        output_tensor = torch.FloatTensor(self.output_file_source[idx][start_B:end_B,1:25])
 
         return (input_tensor,output_tensor)
 
