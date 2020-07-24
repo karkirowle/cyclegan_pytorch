@@ -22,7 +22,7 @@ batch_size = 1
 num_epochs = 5000
 num_features = 24
 fs = 16000
-data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+data_root="./data"
 validation_A_dir="./validation_output/converted_A"
 validation_B_dir="./validation_output/converted_B"
 
