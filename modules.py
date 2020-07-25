@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch
 import math
 from torch.nn.functional import glu
-# Some very interesting blogposts about GLUs https://leimao.github.io/blog/Gated-Linear-Units/
 # TODO: Finding out in_filters
 
 # nn.InstanceNorm2D eps=1e-6
@@ -220,8 +219,8 @@ class Discriminator(nn.Module):
             #Debugger(),
             PermuteBlock(),
             # input?: (1 x 1024)
-            nn.Linear(1024, 1),
-            nn.Sigmoid()
+            nn.Linear(1024, 1)
+            #nn.Sigmoid()
         )
 
     def forward(self, x):

@@ -23,6 +23,10 @@ which is not the default option
 check if that's the same in DCGAN? I can see half of the design motive here comes from the fact
 that you might want to learn framewise information, but the six makes no sense to me.
 - The beta1 parameter of the Adam optimiser is non-default.
+- DatasetLoader is applied lazily according to this post: https://discuss.pytorch.org/t/data-augmentation-folr-labels-and-images/38335
+- It seems that "discriminator" is a classifier with 6 labels and without a sigmoid function in implementations, but paper has sigmoid
+layer (?)
+
 ### Backend design points to check
 Things to investigate:
 
@@ -32,15 +36,16 @@ Things to investigate:
 - Due to the PixelShuffler dimensions divided by two twice, the main constraint seems to be that the input needs to be
 multiples of 4
 - Upsampling is basically at the expense of channel dimensions
-- Residual block have an intersting implementational detail: after the GLU blocks, it projects down the results
+- Residual block have an interesting implementational detail: after the GLU blocks, it projects down the results
 
 - Kernel sizes of 5 and 15 are interesting
 
 - The last few layers of the discriminator seem to be very random
   
+ - Some very interesting blogposts about GLUs https://leimao.github.io/blog/Gated-Linear-Units/
+
  ### Problematic points that should be checked
  
- - TODO: DatasetLoader: is it called only once? (i.e is sampling in time happening every epoch?)
  - TODO: Pitch conversion (normalisation/denormalisation or CycleGAN-based) 
  
  

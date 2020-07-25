@@ -6,12 +6,12 @@ from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
-from utils import world_decode_spectral_envelop, world_speech_synthesis, world_decode_data
+from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0
 
 from modules import Generator, Discriminator
 import librosa
 import os
-
+import itertools
 from torch.nn.functional import l1_loss, mse_loss
 
 import numpy as np
@@ -64,40 +64,32 @@ generator_B2A = Generator(num_features).to("cuda")
 discriminator_A = Discriminator(1).to("cuda")
 discriminator_B = Discriminator(1).to("cuda")
 
-
-generator_A_optimizer = torch.optim.Adam(generator_A2B.parameters(),
+generator_params = [generator_A2B.parameters(), generator_B2A.parameters()]
+generator_optimizer = torch.optim.Adam(itertools.chain(*generator_params),
                                          lr=generator_lr, betas=adam_betas)
-
-discriminator_A_optimizer = torch.optim.Adam(discriminator_A.parameters(),
+discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
+discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
                                            lr=discriminator_lr, betas=adam_betas)
 
-generator_B_optimizer = torch.optim.Adam(generator_B2A.parameters(),
-                                         lr=generator_lr, betas=adam_betas)
 
-discriminator_B_optimizer = torch.optim.Adam(discriminator_B.parameters(),
-                                           lr=discriminator_lr, betas=adam_betas)
 
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
     for i,sample in enumerate(train_dataset_loader):
 
         # Learning rate adjustment snippet
+        # TODO: len(train_dataset_loader) or len(train_dataset)
         num_iterations = (len(train_dataset_loader) // batch_size) * epoch + i
         if num_iterations > 10000:
             lambda_identity = 0
         if num_iterations > start_decay:
             generator_lr = max(0., generator_lr - generator_lr_decay)
             discriminator_lr = max(0., discriminator_lr - discriminator_lr_decay)
-            for param_groups in generator_A_optimizer.param_groups:
+            for param_groups in generator_optimizer.param_groups:
                 param_groups['lr'] = generator_lr
-            for param_groups in generator_B_optimizer.param_groups:
-                param_groups['lr'] = generator_lr
-            for param_groups in discriminator_A_optimizer.param_groups:
-                param_groups['lr'] = discriminator_lr
-            for param_groups in discriminator_B_optimizer.param_groups:
+            for param_groups in discriminator_optimizer.param_groups:
                 param_groups['lr'] = discriminator_lr
 
-        # TODO: I wonder why nnmnkwii has this orientation for samples? Or did I just **** up somewhere?
 
         real_A = sample[0].permute(0, 2, 1).to("cuda")
         real_B = sample[1].permute(0, 2, 1).to("cuda")
@@ -119,8 +111,13 @@ for epoch in range(num_epochs):
         antispoof_B = discriminator_B(fake_B.unsqueeze(1))
 
         # Loss functions
-        cycle_loss = l1_loss(real_A, cycle_A) + l1_loss(real_B, cycle_B)
-        identity_loss = l1_loss(identity_A, real_A) + l1_loss(identity_B, real_B)
+        cycle_A_loss = l1_loss(cycle_A, real_A)
+        cycle_B_loss = l1_loss(cycle_B, real_B)
+        cycle_loss = cycle_A_loss + cycle_B_loss
+
+        identity_A_loss = l1_loss(identity_A, real_A)
+        identity_B_loss = l1_loss(identity_B, real_B)
+        identity_loss = identity_A_loss + identity_B_loss
 
         # When backpropagating for the generator, we want the discriminator to be cheated
         generation_loss = mse_loss(antispoof_A, torch.ones_like(antispoof_A)*true_label) + \
@@ -128,11 +125,10 @@ for epoch in range(num_epochs):
 
         generator_loss = lambda_cycle * cycle_loss + lambda_identity * identity_loss + generation_loss
 
-        generator_A_optimizer.zero_grad()
-        generator_B_optimizer.zero_grad()
+        generator_optimizer.zero_grad()
         generator_loss.backward()
-        generator_A_optimizer.step()
-        generator_B_optimizer.step()
+        generator_optimizer.step()
+        generator_optimizer.step()
 
         d_real_A = discriminator_A(real_A.unsqueeze(1))
         d_fake_A = discriminator_A(generator_B2A(real_B).unsqueeze(1))
@@ -141,21 +137,24 @@ for epoch in range(num_epochs):
         d_fake_B = discriminator_B(generator_A2B(real_A).unsqueeze(1))
 
         # When backpropagating for the discriminator, we want the discriminator to be powerful
-        discriminator_loss = mse_loss(d_real_A, torch.ones_like(d_real_A)*true_label)/4 + \
-            mse_loss(d_fake_A, torch.ones_like(d_fake_A)*fake_label)/4 + \
-            mse_loss(d_real_B, torch.ones_like(d_real_B)*true_label)/4 + \
+        discriminator_A_loss = mse_loss(d_real_A, torch.ones_like(d_real_A)*true_label)/4 + \
+            mse_loss(d_fake_A, torch.ones_like(d_fake_A)*fake_label)/4
+        discriminator_B_loss = mse_loss(d_real_B, torch.ones_like(d_real_B)*true_label)/4 + \
             mse_loss(d_fake_B, torch.ones_like(d_fake_B)*fake_label)/4
+        discriminator_loss = discriminator_A_loss + discriminator_B_loss
 
-        discriminator_A_optimizer.zero_grad()
-        discriminator_B_optimizer.zero_grad()
+        discriminator_optimizer.zero_grad()
         discriminator_loss.backward()
-        discriminator_A_optimizer.step()
-        discriminator_B_optimizer.step()
+        discriminator_optimizer.step()
 
         if (i % 50) == 0:
             print("Iteration ", num_iterations,
                   " Generator loss: ", generator_loss.item(),
-                  " Discriminator loss", discriminator_loss.item())
+                  " Discriminator loss:", discriminator_loss.item(),
+                  " Cycle loss: ", cycle_loss.item(),
+                  " Identity loss: ", identity_loss.item(),
+                  " Discriminator A loss: ", discriminator_A_loss.item(),
+                  " Discriminator B loss: ", discriminator_B_loss.item())
 
     if (epoch % 100) == 0:
 
@@ -172,15 +171,26 @@ for epoch in range(num_epochs):
                 fake_B = generator_A2B(real_A)
                 fake_A = generator_B2A(real_B)
 
-                # Conversion of A -> B
 
-                mean, std = train_dataset.output_meanstd
+                # Conversion of A -> B
+                mean_B, std_B = train_dataset.output_meanstd
+                mean_A, std_A = train_dataset.input_meanstd
+
+                mean_f0_A = mean_A[0]
+                mean_f0_B = mean_B[0]
+                std_f0_A = std_A[0]
+                std_f0_B = std_B[0]
+
                 fake_B = fake_B.cpu().detach().numpy()[0,:,:]
-                fake_B = fake_B.T*std[1:25] + mean[1:25]
+                fake_B = fake_B.T*std_B[1:25] + mean_B[1:25]
                 fake_B = np.float64(np.ascontiguousarray(fake_B))
 
                 # Separation
-                f0 = np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64)
+                f0 = pitch_conversion_with_logf0(np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64),
+                                                 mean_f0_A,
+                                                 std_f0_A,
+                                                 mean_f0_B,
+                                                 std_f0_B)
 
                 sp = world_decode_spectral_envelop(fake_B, fs)
                 ap = np.ascontiguousarray(real_A_full[0,25:,:].T.cpu().detach().numpy()).astype(np.float64)
@@ -192,16 +202,22 @@ for epoch in range(num_epochs):
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
 
                 # Conversion of B -> A
-                mean, std = train_dataset.input_meanstd
                 fake_A = fake_A.cpu().detach().numpy()[0,:,:]
-                fake_A = fake_A.T*std[1:25] + mean[1:25]
+                fake_A = fake_A.T*std_A[1:25] + mean_A[1:25]
                 fake_A = np.float64(np.ascontiguousarray(fake_A))
 
+                debug_real_A = real_A.cpu().detach().numpy()[0,:,:]
+                debug_real_A = debug_real_A.T*std_A[1:25] + mean_A[1:25]
+                debug_real_A = np.float64(np.ascontiguousarray(debug_real_A))
                 # Separation
-                f0 = np.ascontiguousarray(real_B_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64)
+                f0 = pitch_conversion_with_logf0(np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64),
+                                                 mean_f0_A,
+                                                 std_f0_A,
+                                                 mean_f0_A,
+                                                 std_f0_A)
 
-                sp = world_decode_spectral_envelop(fake_A, fs)
-                ap = np.ascontiguousarray(real_B_full[0,25:,:].T.cpu().detach().numpy()).astype(np.float64)
+                sp = world_decode_spectral_envelop(debug_real_A, fs)
+                ap = np.ascontiguousarray(real_A_full[0,25:,:].T.cpu().detach().numpy()).astype(np.float64)
 
                 speech_fake_A = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 

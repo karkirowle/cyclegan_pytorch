@@ -11,29 +11,45 @@ from utils import world_decompose, world_encode_spectral_envelop, wav_padding
 
 from torch.utils.data import Dataset
 import torch
+import os
 import matplotlib.pyplot as plt
-# Basically, you have to be paranoid about the alignment of various datasources
-# Or you hstacl
-
-# MemoryCache
 
 
 class VCC2016DataSource(VCC2016Super):
 
+    def __init__(self,data_root,speakers,training):
+        super().__init__(data_root,speakers,training=training)
+
+        # We check for preprocessed dir and create a subfolder based on speaker name
+        self.preprocess_dir = "./preprocessed"
+        self.speaker = speakers[0]
+        if not os.path.exists(os.path.join(self.preprocess_dir)):
+            os.mkdir(self.preprocess_dir)
+        if not os.path.exists(os.path.join(self.preprocess_dir,self.speaker)):
+            os.mkdir(os.path.join(self.preprocess_dir,self.speaker))
 
     def collect_features(self,file_path):
         """PyWorld analysis"""
         sr = 16000
-        wav, _ = librosa.load(file_path, sr=sr, mono=True)
-        wav_padded = wav_padding(wav, sr=sr, frame_period=5, multiple=4)
-        f0, _, sp, ap = world_decompose(wav_padded,sr)
 
-        mcep = world_encode_spectral_envelop(sp, sr, dim=24)
+        save_path = os.path.join(self.preprocess_dir, self.speaker, os.path.basename(file_path))
 
-        # Extending to 2D to stack
-        f0 = f0[:,None]
+        if os.path.exists(save_path):
+            features = np.load(save_path)
+        else:
 
-        features = np.hstack((f0, mcep, ap))
+            wav, _ = librosa.load(file_path, sr=sr, mono=True)
+            wav_padded = wav_padding(wav, sr=sr, frame_period=5, multiple=4)
+            f0, _, sp, ap = world_decompose(wav_padded,sr)
+
+            mcep = world_encode_spectral_envelop(sp, sr, dim=24)
+
+            # Extending to 2D to stack and log zeroes 1e-16. TODO: Better solution for this
+            f0 = np.log(f0[:,None])
+            f0[f0 == -np.inf] = 1e-16
+
+            features = np.hstack((f0, mcep, ap))
+            features.dump(save_path)
 
         return features
 
@@ -70,7 +86,6 @@ class MCEPWrapper(Dataset):
 
 
         # This snippet is responsible for sampling the frames
-
         frames_A = self.input_file_source[idx].shape[0]
         assert frames_A >= self.num_frames
 
