@@ -35,7 +35,7 @@ true_label = 1
 lambda_cycle = 10
 lambda_identity = 5
 start_decay = 200000
-
+adam_betas = (0.5, 0.999)
 ############## HYPERPARAMETER PART #######################################
 
 # We create nice dirs
@@ -66,16 +66,16 @@ discriminator_B = Discriminator(1).to("cuda")
 
 
 generator_A_optimizer = torch.optim.Adam(generator_A2B.parameters(),
-                                         lr=generator_lr)
+                                         lr=generator_lr, betas=adam_betas)
 
 discriminator_A_optimizer = torch.optim.Adam(discriminator_A.parameters(),
-                                           lr=discriminator_lr)
+                                           lr=discriminator_lr, betas=adam_betas)
 
 generator_B_optimizer = torch.optim.Adam(generator_B2A.parameters(),
-                                         lr=generator_lr)
+                                         lr=generator_lr, betas=adam_betas)
 
 discriminator_B_optimizer = torch.optim.Adam(discriminator_B.parameters(),
-                                           lr=discriminator_lr)
+                                           lr=discriminator_lr, betas=adam_betas)
 
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
@@ -141,10 +141,10 @@ for epoch in range(num_epochs):
         d_fake_B = discriminator_B(generator_A2B(real_A).unsqueeze(1))
 
         # When backpropagating for the discriminator, we want the discriminator to be powerful
-        discriminator_loss = mse_loss(d_real_A, torch.ones_like(d_real_A)*true_label) + \
-            mse_loss(d_fake_A, torch.ones_like(d_fake_A)*fake_label) + \
-            mse_loss(d_real_B, torch.ones_like(d_real_B)*true_label) + \
-            mse_loss(d_fake_B, torch.ones_like(d_fake_B)*fake_label)
+        discriminator_loss = mse_loss(d_real_A, torch.ones_like(d_real_A)*true_label)/4 + \
+            mse_loss(d_fake_A, torch.ones_like(d_fake_A)*fake_label)/4 + \
+            mse_loss(d_real_B, torch.ones_like(d_real_B)*true_label)/4 + \
+            mse_loss(d_fake_B, torch.ones_like(d_fake_B)*fake_label)/4
 
         discriminator_A_optimizer.zero_grad()
         discriminator_B_optimizer.zero_grad()

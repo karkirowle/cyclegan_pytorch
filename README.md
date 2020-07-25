@@ -22,7 +22,7 @@ which is not the default option
 - The discriminator is very odd in the sense that it is using (1 x 6 x ? x 1) as output,
 check if that's the same in DCGAN? I can see half of the design motive here comes from the fact
 that you might want to learn framewise information, but the six makes no sense to me.
-
+- The beta1 parameter of the Adam optimiser is non-default.
 ### Backend design points to check
 Things to investigate:
 
