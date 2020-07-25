@@ -8,6 +8,9 @@ from torch.nn.functional import glu
 
 # nn.InstanceNorm2D eps=1e-6
 
+
+
+
 class ConvLayer(nn.Module):
 
     #This acts as a base Conv Class and the forward func specifies whether 1D or 2D
@@ -94,7 +97,7 @@ class Downsample(nn.Module):
         self.instance_norm = None
         self.glu = nn.GLU(dim=1)
 
-    def forward(self,input):
+    def forward(self, input):
         return self.glu(self.instance_norm(self.conv(input)))
 
 
@@ -103,15 +106,17 @@ class Downsample1D(Downsample):
     def __init__(self,in_filter,out_filter,kernel,stride):
         super().__init__(out_filter)
         self.conv = ConvLayer1D(in_filter,out_filter*2,kernel,stride)
-        self.instance_norm = nn.InstanceNorm1d(num_features=out_filter*2,eps=1e-6)
+        self.instance_norm = nn.InstanceNorm1d(num_features=out_filter*2,eps=1e-6, affine=True)
 
 
 class Downsample2D(Downsample):
 
-    def __init__(self,in_filter,out_filter,kernel,stride):
+    def __init__(self,in_filter,out_filter,kernel,stride,padding=None):
+        """None lets the default padding go while padding=0 cancels it"""
         super().__init__(out_filter)
         self.conv = ConvLayer2D(in_filter,out_filter*2,kernel,stride)
-        self.instance_norm = nn.InstanceNorm2d(num_features=out_filter*2,eps=1e-6)
+        if padding is not None: self.conv.conv.padding = padding
+        self.instance_norm = nn.InstanceNorm2d(num_features=out_filter*2,eps=1e-6, affine=True)
 
 
 class PixelShuffler(nn.Module):
@@ -120,7 +125,7 @@ class PixelShuffler(nn.Module):
         super().__init__()
         self.shuffle_size = shuffle_size
 
-    def forward(self,input):
+    def forward(self, x):
         # TODO: Check notation order. I think tensorflow has (n,w,c), we have (n,c,w)
         n,c,w = input.size()
         ow = c // self.shuffle_size
@@ -140,11 +145,11 @@ class Upsample1D(nn.Module):
         self.block = nn.Sequential(ConvLayer1D(in_filter,in_filter * 2 ,kernel,stride),
                                    PixelShuffler(),
                                    # would be outfilter * 2 but shuffled by 2
-                                   nn.InstanceNorm1d(num_features=out_filter * 2 ,eps=1e-6),
+                                   nn.InstanceNorm1d(num_features=out_filter * 2 ,eps=1e-6, affine=True),
                                    nn.GLU(dim=1))
 
-    def forward(self, input):
-        return self.block(input)
+    def forward(self, x):
+        return self.block(x)
 
 
 class Generator(nn.Module):
@@ -171,8 +176,8 @@ class Generator(nn.Module):
                                    ConvLayer1D(in_filter=128, out_filter=in_feature, kernel=5,stride=1),
                                    )
 
-    def forward(self,input):
-        return self.block(input)
+    def forward(self, x):
+        return self.block(x)
 
 
 class Debugger(nn.Module):
@@ -180,10 +185,18 @@ class Debugger(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self,input):
+    def forward(self, x):
 
-        print("debugger",input.shape)
-        return input
+        print("debugger",x.shape)
+        return x
+
+
+class PermuteBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self,x):
+        return x.permute(0,2,3,1).contiguous()
 
 class Discriminator(nn.Module):
 
@@ -191,21 +204,30 @@ class Discriminator(nn.Module):
         super().__init__()
 
         self.block = nn.Sequential(
-            ConvLayer2D(in_filter=in_feature,out_filter=256,kernel=(3,3), stride = (1,2)),
+            # input: (1 x 1 x 24 x 128)
+            ConvLayer2D(in_filter=in_feature,out_filter=256, kernel=(3, 3), stride=(1, 2)),
             nn.GLU(dim=1),
-
-            # 128->256  24->11 128->63
-            Downsample2D(in_filter=128, out_filter=256, kernel=(3,3), stride=(2,2)),
+            # input: (1 x 128 x 24 x 64)
+            Debugger(),
+            Downsample2D(in_filter=128, out_filter=256, kernel=(3, 3), stride=(2, 2)),
+            # input: (1 x 256 x 12 x 32)
+            Debugger(),
             Downsample2D(in_filter=256, out_filter=512, kernel=(3, 3), stride=(2, 2)),
-
+            # input: (1 x 512 x 6 x 16)
+            Debugger(),
+            #nn.ZeroPad2d((3, 2, 0, 1)),
             Downsample2D(in_filter=512, out_filter=1024, kernel=(6, 3), stride=(1, 2)),
-            nn.Flatten(),
-            nn.Linear(1024 * 6 * 8 ,1),
+            # input: (1 x 1024 x 1 x 1)
+            #Debugger(),
+            PermuteBlock(),
+            # input?: (1 x 1024)
+            Debugger(),
+            nn.Linear(1024, 1),
             nn.Sigmoid()
         )
 
-    def forward(self, input):
-        return self.block(input)
+    def forward(self, x):
+        return self.block(x)
 
 
 
@@ -216,10 +238,10 @@ if __name__ == '__main__':
     #print(Downsample1D(10,10,3,1)(torch.ones((10,10,10))))
 
     # Length should be divisible by 4
-    print(Generator(24)(torch.ones(10,24,400)))
+    #print(Generator(24)(torch.ones(10,24,400)))
     #print(padding_utility(6,3,1,6)) # 7,
     #print(padding_utility(16,1,2,3))
-    print(Discriminator(1)(torch.ones(10,1,24,128)))
+    print(Discriminator(1)(torch.ones(1,1,24,128)).shape)
 
     # 10 x 512 x 6 x 16
 

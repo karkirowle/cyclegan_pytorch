@@ -14,6 +14,15 @@ Requirements:
 - librosa
 - pyworld
 
+### Interesting points that I figured out while reimplementing
+- Discriminator is 2D, because authors believe this is better for frequency info (agreed), but
+1D generator to preserve temporal structure (not sure why 2D wouldn't work there?)
+- InstanceNorm should be set to affine=True in PyTorch according to PyTorch reimplementation,
+which is not the default option
+- The discriminator is very odd in the sense that it is using (1 x 6 x ? x 1) as output,
+check if that's the same in DCGAN? I can see half of the design motive here comes from the fact
+that you might want to learn framewise information, but the six makes no sense to me.
+
 ### Backend design points to check
 Things to investigate:
 
@@ -27,10 +36,12 @@ multiples of 4
 
 - TODO: In preprocessing pad to multiples of four
 - TODO: why kernel_size = 5 in conv? There are other intere
-- Why discriminator is 2D convolution based? 
+
 - The last few layers of the discriminator seem to be very random
   
  ### Problematic points that should be checked
  
  - TODO: DatasetLoader: is it called only once? (i.e is sampling in time happening every epoch?)
  - TODO: Pitch conversion (normalisation/denormalisation or CycleGAN-based) 
+ 
+ 
