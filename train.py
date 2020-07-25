@@ -3,7 +3,6 @@ import nnmnkwii
 
 from data_utils import VCC2016DataSource, MCEPWrapper
 from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
-from nnmnkwii.preprocessing import meanstd
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
@@ -22,7 +21,8 @@ batch_size = 1
 num_epochs = 5000
 num_features = 24
 fs = 16000
-data_root="./data"
+data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+#data_root="./data"
 validation_A_dir="./validation_output/converted_A"
 validation_B_dir="./validation_output/converted_B"
 
@@ -50,17 +50,10 @@ TF2_train_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(
 SF1_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["SF1"],training=False))))
 TF2_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["TF2"],training=False))))
 
-# We need to fetch datasetwise normalisation parameters and this seems to be the best point for it
-#SF1_lengths = [len(y) for y in SF1_train_data_source]
-#SF1_data_meanstd = meanstd(SF1_train_data_source, SF1_lengths)
-#TF2_lengths = [len(y) for y in TF2_train_data_source]
-#TF2_data_meanstd = meanstd(TF2_train_data_source, TF2_lengths)
-# TODO: solve the normalisation eventually
-meanstd_1 = (0,1)
-meanstd_2 = (0,1)
-
-train_dataset = MCEPWrapper(SF1_train_data_source, TF2_train_data_source, SF1_data_meanstd, TF2_data_meanstd, mfcc_only=True)
-test_dataset = MCEPWrapper(SF1_test_data_source, TF2_test_data_source, SF1_data_meanstd, TF2_data_meanstd, mfcc_only=False)
+train_dataset = MCEPWrapper(SF1_train_data_source, TF2_train_data_source, mfcc_only=True)
+test_dataset = MCEPWrapper(SF1_test_data_source, TF2_test_data_source, mfcc_only=False, norm_calc=False)
+test_dataset.input_meanstd = train_dataset.input_meanstd
+test_dataset.output_meanstd = train_dataset.output_meanstd
 
 train_dataset_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_dataset_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -181,9 +174,10 @@ for epoch in range(num_epochs):
 
                 # Conversion of A -> B
 
+                mean, std = train_dataset.output_meanstd
                 fake_B = fake_B.cpu().detach().numpy()[0,:,:]
-                fake_B = fake_B*meanstd_2[1] + meanstd_2[0]
-                fake_B = np.float64(np.ascontiguousarray(fake_B.T))
+                fake_B = fake_B.T*std[1:25] + mean[1:25]
+                fake_B = np.float64(np.ascontiguousarray(fake_B))
 
                 # Separation
                 f0 = np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64)
@@ -193,15 +187,15 @@ for epoch in range(num_epochs):
 
                 speech_fake_B = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 
-                filename_A = os.path.basename(sample[2][0])
+                filename_A = os.path.basename(sample[2][0][0])
 
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
 
                 # Conversion of B -> A
-
+                mean, std = train_dataset.input_meanstd
                 fake_A = fake_A.cpu().detach().numpy()[0,:,:]
-                fake_A = fake_A*meanstd_1[1] + meanstd_1[0]
-                fake_A = np.float64(np.ascontiguousarray(fake_A.T))
+                fake_A = fake_A.T*std[1:25] + mean[1:25]
+                fake_A = np.float64(np.ascontiguousarray(fake_A))
 
                 # Separation
                 f0 = np.ascontiguousarray(real_B_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64)
@@ -211,6 +205,6 @@ for epoch in range(num_epochs):
 
                 speech_fake_A = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 
-                filename_B = os.path.basename(sample[3][0])
+                filename_B = os.path.basename(sample[3][0][0])
 
                 librosa.output.write_wav(os.path.join(validation_B_dir, filename_B), speech_fake_A, fs)

@@ -34,8 +34,7 @@ multiples of 4
 - Upsampling is basically at the expense of channel dimensions
 - Residual block have an intersting implementational detail: after the GLU blocks, it projects down the results
 
-- TODO: In preprocessing pad to multiples of four
-- TODO: why kernel_size = 5 in conv? There are other intere
+- Kernel sizes of 5 and 15 are interesting
 
 - The last few layers of the discriminator seem to be very random
   

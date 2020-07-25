@@ -42,13 +42,13 @@ class ConvLayer(nn.Module):
 
         self.conv = None
 
-    def forward(self, input):
+    def forward(self, x):
 
-        out = self.conv(input)
+        out = self.conv(x)
 
-        if (self.cut_last_element_X) & (len(input.shape) == 4):
+        if (self.cut_last_element_X) & (len(x.shape) == 4):
             out = out[:,:,:-1,:]
-        if (self.cut_last_element_Y) & (len(input.shape) == 4):
+        if (self.cut_last_element_Y) & (len(x.shape) == 4):
             out = out[:,:,:,:-1]
 
         return out
@@ -83,9 +83,9 @@ class ResidualBlock1D(nn.Module):
             nn.InstanceNorm1d(num_features=out_filter, eps=1e-6)
         )
 
-    def forward(self, inputs):
+    def forward(self, x):
 
-        h3 = inputs + self.block(inputs)
+        h3 = x + self.block(x)
         return h3
 
 
@@ -97,8 +97,8 @@ class Downsample(nn.Module):
         self.instance_norm = None
         self.glu = nn.GLU(dim=1)
 
-    def forward(self, input):
-        return self.glu(self.instance_norm(self.conv(input)))
+    def forward(self, x):
+        return self.glu(self.instance_norm(self.conv(x)))
 
 
 class Downsample1D(Downsample):
@@ -127,11 +127,11 @@ class PixelShuffler(nn.Module):
 
     def forward(self, x):
         # TODO: Check notation order. I think tensorflow has (n,w,c), we have (n,c,w)
-        n,c,w = input.size()
+        n,c,w = x.size()
         ow = c // self.shuffle_size
         oc = w * self.shuffle_size
 
-        return torch.reshape(input, shape = [n,ow,oc])
+        return torch.reshape(x, shape = [n,ow,oc])
 
 
 class Upsample1D(nn.Module):
@@ -145,7 +145,7 @@ class Upsample1D(nn.Module):
         self.block = nn.Sequential(ConvLayer1D(in_filter,in_filter * 2 ,kernel,stride),
                                    PixelShuffler(),
                                    # would be outfilter * 2 but shuffled by 2
-                                   nn.InstanceNorm1d(num_features=out_filter * 2 ,eps=1e-6, affine=True),
+                                   nn.InstanceNorm1d(num_features=out_filter // 2 ,eps=1e-6, affine=True),
                                    nn.GLU(dim=1))
 
     def forward(self, x):
@@ -172,6 +172,7 @@ class Generator(nn.Module):
                                    ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
 
                                    Upsample1D(in_filter=512,kernel=5),
+
                                    Upsample1D(in_filter=256,kernel=5),
                                    ConvLayer1D(in_filter=128, out_filter=in_feature, kernel=5,stride=1),
                                    )
@@ -198,6 +199,7 @@ class PermuteBlock(nn.Module):
     def forward(self,x):
         return x.permute(0,2,3,1).contiguous()
 
+
 class Discriminator(nn.Module):
 
     def __init__(self, in_feature=1):
@@ -208,20 +210,16 @@ class Discriminator(nn.Module):
             ConvLayer2D(in_filter=in_feature,out_filter=256, kernel=(3, 3), stride=(1, 2)),
             nn.GLU(dim=1),
             # input: (1 x 128 x 24 x 64)
-            Debugger(),
             Downsample2D(in_filter=128, out_filter=256, kernel=(3, 3), stride=(2, 2)),
             # input: (1 x 256 x 12 x 32)
-            Debugger(),
             Downsample2D(in_filter=256, out_filter=512, kernel=(3, 3), stride=(2, 2)),
             # input: (1 x 512 x 6 x 16)
-            Debugger(),
             #nn.ZeroPad2d((3, 2, 0, 1)),
             Downsample2D(in_filter=512, out_filter=1024, kernel=(6, 3), stride=(1, 2)),
             # input: (1 x 1024 x 1 x 1)
             #Debugger(),
             PermuteBlock(),
             # input?: (1 x 1024)
-            Debugger(),
             nn.Linear(1024, 1),
             nn.Sigmoid()
         )
@@ -238,10 +236,10 @@ if __name__ == '__main__':
     #print(Downsample1D(10,10,3,1)(torch.ones((10,10,10))))
 
     # Length should be divisible by 4
-    #print(Generator(24)(torch.ones(10,24,400)))
+    print(Generator(24)(torch.ones(1,24,128)).shape)
     #print(padding_utility(6,3,1,6)) # 7,
     #print(padding_utility(16,1,2,3))
-    print(Discriminator(1)(torch.ones(1,1,24,128)).shape)
+    #print(Discriminator(1)(torch.ones(1,1,24,128)).shape)
 
     # 10 x 512 x 6 x 16
 
