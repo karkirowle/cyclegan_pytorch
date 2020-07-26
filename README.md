@@ -28,6 +28,10 @@ that you might want to learn framewise information, but the six makes no sense t
 layer (?)
 - Random sample frames are taken from the input and output slices too, i.e there is no alignment enforced
 
+- How PyTorch handles sparsity causes problems: https://discuss.pytorch.org/t/poor-convergence-on-pytorch-compared-to-tensorflow-using-adam-optimizer/31425/6
+https://discuss.pytorch.org/t/suboptimal-convergence-when-compared-with-tensorflow-model/5099/22
+- TODO: Discriminator is apparently a PatchGAN
+- TODO: None have managed to make it work in PyTorch
 ### Backend design points to check
 Things to investigate:
 

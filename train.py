@@ -65,11 +65,11 @@ discriminator_A = Discriminator(1).to("cuda")
 discriminator_B = Discriminator(1).to("cuda")
 
 generator_params = [generator_A2B.parameters(), generator_B2A.parameters()]
-generator_optimizer = torch.optim.Adam(itertools.chain(*generator_params),
-                                         lr=generator_lr, betas=adam_betas)
+generator_optimizer = torch.optim.SGD(itertools.chain(*generator_params),
+                                         lr=generator_lr)
 discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
-discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
-                                           lr=discriminator_lr, betas=adam_betas)
+discriminator_optimizer = torch.optim.SGD(itertools.chain(*discriminator_params),
+                                           lr=discriminator_lr)
 
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
@@ -90,7 +90,6 @@ for epoch in range(num_epochs):
 
         real_A = sample[0].permute(0, 2, 1).to("cuda")
         real_B = sample[1].permute(0, 2, 1).to("cuda")
-        print(real_A.shape)
         # Speech A -> Speech B -> Speech A
         fake_B = generator_A2B(real_A)
         cycle_A = generator_B2A(fake_B)
