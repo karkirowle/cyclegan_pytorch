@@ -15,6 +15,7 @@ import os
 import matplotlib.pyplot as plt
 
 
+
 class VCC2016DataSource(VCC2016Super):
 
     def __init__(self,data_root,speakers,training):
@@ -45,8 +46,8 @@ class VCC2016DataSource(VCC2016Super):
             mcep = world_encode_spectral_envelop(sp, sr, dim=24)
 
             # Extending to 2D to stack and log zeroes 1e-16. TODO: Better solution for this
-            f0 = np.log(f0[:,None])
-            f0[f0 == -np.inf] = 1e-16
+            f0 = np.ma.log(f0[:,None])
+            #f0[f0 == -np.inf] = 1e-16
 
             features = np.hstack((f0, mcep, ap))
             features.dump(save_path)
@@ -100,31 +101,38 @@ class MCEPWrapper(Dataset):
 
         # This snippet is responsible for slicing and normalisation
 
-        if self.mfcc_only:
-            input_slice = self.input_file_source[idx][start_A:end_A,1:25]
-            output_slice = self.output_file_source[idx][start_B:end_B, 1:25]
-            input_mean, input_std = self.input_meanstd
-            output_mean, output_std = self.output_meanstd
-            input_slice_normalised = (input_slice - input_mean[1:25])/input_std[1:25]
-            output_slice_normalised = (output_slice - output_mean[1:25])/output_std[1:25]
-        else:
+        #if self.mfcc_only:
+        input_slice = self.input_file_source[idx][start_A:end_A,1:25]
+        output_slice = self.output_file_source[idx][start_B:end_B, 1:25]
+        input_mean, input_std = self.input_meanstd
+        output_mean, output_std = self.output_meanstd
+        mcep_A_normalised = (input_slice - input_mean[1:25])/input_std[1:25]
+
+        mcep_B_normalised = (output_slice - output_mean[1:25])/output_std[1:25]
+
+
+
+        #else:
             # We return everything, but we still have normalise
-            input_slice = self.input_file_source[idx]
-            output_slice = self.output_file_source[idx]
-            input_mean, input_std = self.input_meanstd
-            output_mean, output_std = self.output_meanstd
-            input_slice[:,1:25] = (input_slice[:,1:25] - input_mean[1:25])/input_std[1:25]
-            output_slice[:,1:25] = (output_slice[:,1:25] - output_mean[1:25])/output_std[1:25]
-            input_slice_normalised = input_slice
-            output_slice_normalised = output_slice
+        #    input_slice = self.input_file_source[idx]
+        #    output_slice = self.output_file_source[idx]
+        #    input_mean, input_std = self.input_meanstd
+        #    output_mean, output_std = self.output_meanstd
+        #    input_slice[:,1:25] = (input_slice[:,1:25] - input_mean[1:25])/input_std[1:25]
+        #    output_slice[:,1:25] = (output_slice[:,1:25] - output_mean[1:25])/output_std[1:25]
+        #    input_slice_normalised = input_slice
+        #    output_slice_normalised = output_slice
 
         # Second index: selecting 24 MCEP features
         # Third index: randomly samping 128 frames
-        input_tensor = torch.FloatTensor(input_slice_normalised)
-        output_tensor = torch.FloatTensor(output_slice_normalised)
+        input_tensor = torch.FloatTensor(mcep_A_normalised)
+        output_tensor = torch.FloatTensor(mcep_B_normalised)
 
         filename_A = list(self.input_file_source.dataset.collected_files[idx])
         filename_B = list(self.output_file_source.dataset.collected_files[idx])
+
+        #other = OtherParameters(f0_A,f0_B,bap_A,bap_B)
+
 
         return (input_tensor, output_tensor, filename_A, filename_B)
 

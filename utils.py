@@ -159,12 +159,12 @@ def logf0_statistics(f0s):
 
     return log_f0s_mean, log_f0s_std
 
-
+import matplotlib.pyplot as plt
 def pitch_conversion_with_logf0(logf0, mean_log_src, std_log_src, mean_log_target, std_log_target):
-    """Because we saved the masked values we need this more complicated version with loical indexing"""
+    """Because we saved the masked values we need this more complicated version with logical indexing"""
 
     f0_converted = np.zeros_like(logf0)
-    f0_converted[logf0 != 1e-16] = np.exp((logf0[logf0 != 1e-16] -
+    f0_converted[logf0._mask == False] = np.exp((logf0[logf0._mask == False] -
                                                  mean_log_src) / std_log_src * std_log_target + mean_log_target)
     return f0_converted
 

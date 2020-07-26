@@ -71,8 +71,6 @@ discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters
 discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
                                            lr=discriminator_lr, betas=adam_betas)
 
-
-
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
     for i,sample in enumerate(train_dataset_loader):
@@ -90,10 +88,9 @@ for epoch in range(num_epochs):
             for param_groups in discriminator_optimizer.param_groups:
                 param_groups['lr'] = discriminator_lr
 
-
         real_A = sample[0].permute(0, 2, 1).to("cuda")
         real_B = sample[1].permute(0, 2, 1).to("cuda")
-
+        print(real_A.shape)
         # Speech A -> Speech B -> Speech A
         fake_B = generator_A2B(real_A)
         cycle_A = generator_B2A(fake_B)
@@ -156,71 +153,80 @@ for epoch in range(num_epochs):
                   " Discriminator A loss: ", discriminator_A_loss.item(),
                   " Discriminator B loss: ", discriminator_B_loss.item())
 
-    if (epoch % 100) == 0:
+    if (epoch % 50) == 0:
 
         # Model save
         with torch.no_grad():
-            for i,sample in enumerate(test_dataset_loader):
+            for i in range(len(SF1_test_data_source)):
 
-                real_A_full = sample[0].permute(0, 2, 1)
+                feature_A = SF1_test_data_source[i]
+                feature_B = TF2_test_data_source[i]
+                filename_A = os.path.basename(SF1_test_data_source.dataset.collected_files[i][0])
+                filename_B = os.path.basename(TF2_test_data_source.dataset.collected_files[i][0])
 
-                real_B_full = sample[1].permute(0, 2, 1)
-                real_A = real_A_full[:,1:25,:].to("cuda")
-                real_B = real_B_full[:,1:25,:].to("cuda")
+                f0_A = feature_A[:,0]
+                f0_B = feature_B[:,0]
+                ap_A = feature_A[:,25:]
+                ap_B = feature_B[:,25:]
+                mean_B, std_B = train_dataset.output_meanstd
+                mean_A, std_A = train_dataset.input_meanstd
+                mean_f0_A = mean_A[0]
+                mean_f0_B = mean_B[0]
+                std_f0_A = std_A[0]
+                std_f0_B = std_B[0]
+                mean_mcep_A = mean_A[1:25]
+                mean_mcep_B = mean_B[1:25]
+                std_mcep_A = std_A[1:25]
+                std_mcep_B = std_B[1:25]
+
+                mcep_A = (feature_A[None,:,1:25] - mean_mcep_A)/std_mcep_A
+                mcep_B = (feature_B[None,:,1:25] - mean_mcep_B)/std_mcep_B
+
+                real_A = torch.FloatTensor(mcep_A).permute(0, 2, 1).to("cuda")
+                real_B = torch.FloatTensor(mcep_B).permute(0, 2, 1).to("cuda")
 
                 fake_B = generator_A2B(real_A)
                 fake_A = generator_B2A(real_B)
 
 
                 # Conversion of A -> B
-                mean_B, std_B = train_dataset.output_meanstd
-                mean_A, std_A = train_dataset.input_meanstd
-
-                mean_f0_A = mean_A[0]
-                mean_f0_B = mean_B[0]
-                std_f0_A = std_A[0]
-                std_f0_B = std_B[0]
-
                 fake_B = fake_B.cpu().detach().numpy()[0,:,:]
                 fake_B = fake_B.T*std_B[1:25] + mean_B[1:25]
-                fake_B = np.float64(np.ascontiguousarray(fake_B))
+                fake_B = np.ascontiguousarray(fake_B).astype(np.float64)
 
                 # Separation
-                f0 = pitch_conversion_with_logf0(np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64),
+                f0 = pitch_conversion_with_logf0(f0_A,
                                                  mean_f0_A,
                                                  std_f0_A,
                                                  mean_f0_B,
                                                  std_f0_B)
 
                 sp = world_decode_spectral_envelop(fake_B, fs)
-                ap = np.ascontiguousarray(real_A_full[0,25:,:].T.cpu().detach().numpy()).astype(np.float64)
+                ap = np.ascontiguousarray(ap_A)
 
                 speech_fake_B = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
-
-                filename_A = os.path.basename(sample[2][0][0])
 
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
 
                 # Conversion of B -> A
                 fake_A = fake_A.cpu().detach().numpy()[0,:,:]
                 fake_A = fake_A.T*std_A[1:25] + mean_A[1:25]
-                fake_A = np.float64(np.ascontiguousarray(fake_A))
+                fake_A = np.ascontiguousarray(fake_A).astype(np.float64)
 
                 debug_real_A = real_A.cpu().detach().numpy()[0,:,:]
                 debug_real_A = debug_real_A.T*std_A[1:25] + mean_A[1:25]
-                debug_real_A = np.float64(np.ascontiguousarray(debug_real_A))
+                debug_real_A = np.ascontiguousarray(debug_real_A).astype(np.float64)
                 # Separation
-                f0 = pitch_conversion_with_logf0(np.ascontiguousarray(real_A_full[0,0,:].T.cpu().detach().numpy()).astype(np.float64),
+                f0 = pitch_conversion_with_logf0(f0_A,
                                                  mean_f0_A,
                                                  std_f0_A,
                                                  mean_f0_A,
                                                  std_f0_A)
 
                 sp = world_decode_spectral_envelop(debug_real_A, fs)
-                ap = np.ascontiguousarray(real_A_full[0,25:,:].T.cpu().detach().numpy()).astype(np.float64)
+                ap = np.ascontiguousarray(ap_A)
 
                 speech_fake_A = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 
-                filename_B = os.path.basename(sample[3][0][0])
 
                 librosa.output.write_wav(os.path.join(validation_B_dir, filename_B), speech_fake_A, fs)

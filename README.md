@@ -26,6 +26,7 @@ that you might want to learn framewise information, but the six makes no sense t
 - DatasetLoader is applied lazily according to this post: https://discuss.pytorch.org/t/data-augmentation-folr-labels-and-images/38335
 - It seems that "discriminator" is a classifier with 6 labels and without a sigmoid function in implementations, but paper has sigmoid
 layer (?)
+- Random sample frames are taken from the input and output slices too, i.e there is no alignment enforced
 
 ### Backend design points to check
 Things to investigate:
@@ -46,6 +47,5 @@ multiples of 4
 
  ### Problematic points that should be checked
  
- - TODO: Pitch conversion (normalisation/denormalisation or CycleGAN-based) 
- 
+
  

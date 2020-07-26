@@ -42,7 +42,6 @@ class ConvLayer(nn.Module):
         self.conv = None
 
     def forward(self, x):
-
         out = self.conv(x)
 
         if (self.cut_last_element_X) & (len(x.shape) == 4):
