@@ -46,7 +46,8 @@ if not os.path.exists(validation_A_dir):
     os.mkdir(validation_A_dir)
 if not os.path.exists(validation_B_dir):
     os.mkdir(validation_B_dir)
-
+if not os.path.exists("figures"):
+    os.mkdir("figures")
 SF1_train_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["SF1"],training=True))))
 TF2_train_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["TF2"],training=True))))
 SF1_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["SF1"],training=False))))
@@ -221,16 +222,15 @@ for epoch in range(num_epochs):
 
                 sp = world_decode_spectral_envelop(fake_B, fs)
                 ap = np.ascontiguousarray(ap_A)
-                plt.plot(f0)
-                plt.show()
+
+                # Save figure
+                fig = plt.figure()
                 plt.subplot(2,1,1)
                 decoded = world_decode_spectral_envelop(real_A.detach().cpu().numpy()[0,:,:].T*std_A[1:25] + mean_A[1:25],fs)
                 plt.imshow(np.log10(decoded))
                 plt.subplot(2,1,2)
                 plt.imshow(np.log10(sp))
-                plt.show()
-                plt.imshow(ap)
-                plt.show()
+                plt.savefig(os.path.join("figures",filename_A + "_epoch_" + str(epoch)) + ".png")
                 speech_fake_B = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
