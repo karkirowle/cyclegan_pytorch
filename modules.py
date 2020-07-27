@@ -163,11 +163,11 @@ class Generator(nn.Module):
 
         # This is eqiuvalent to the 1024, but it's kind of difficult to explain
                                    ResidualBlock1D(in_filter=512,out_filter=512,kernel=3),
-                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
 
                                    Upsample1D(in_filter=512,kernel=5),
 

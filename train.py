@@ -1,6 +1,7 @@
 
 import nnmnkwii
 
+from torch.utils.tensorboard import SummaryWriter
 from data_utils import VCC2016DataSource, MCEPWrapper
 from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ import librosa
 import os
 import itertools
 from torch.nn.functional import l1_loss, mse_loss
-
+from tf_adam import Adam
 import numpy as np
 ############## HYPERPARAMETER PART #######################################
 
@@ -36,6 +37,7 @@ lambda_cycle = 10
 lambda_identity = 5
 start_decay = 200000
 adam_betas = (0.5, 0.999)
+writer = SummaryWriter()
 ############## HYPERPARAMETER PART #######################################
 
 # We create nice dirs
@@ -64,12 +66,17 @@ generator_B2A = Generator(num_features).to("cuda")
 discriminator_A = Discriminator(1).to("cuda")
 discriminator_B = Discriminator(1).to("cuda")
 
+
 generator_params = [generator_A2B.parameters(), generator_B2A.parameters()]
-generator_optimizer = torch.optim.SGD(itertools.chain(*generator_params),
+generator_optimizer = Adam(itertools.chain(*generator_params),
                                          lr=generator_lr)
 discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
-discriminator_optimizer = torch.optim.SGD(itertools.chain(*discriminator_params),
+discriminator_optimizer = Adam(itertools.chain(*discriminator_params),
                                            lr=discriminator_lr)
+
+#torch.optim.lr_scheduler.StepLR(discriminator_optimizer, step_size=20, gamma=0.2)
+#torch.optim.lr_scheduler.StepLR(generator_optimizer, step_size=20, gamma=0.2)
+
 
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
@@ -151,6 +158,18 @@ for epoch in range(num_epochs):
                   " Identity loss: ", identity_loss.item(),
                   " Discriminator A loss: ", discriminator_A_loss.item(),
                   " Discriminator B loss: ", discriminator_B_loss.item())
+            writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
+            writer.add_scalar('Discriminator loss', discriminator_loss.item(), num_iterations)
+            writer.add_scalar('Cycle loss', cycle_loss.item(), num_iterations)
+            writer.add_scalar('Identity loss', identity_loss.item(), num_iterations)
+            writer.add_scalar('Discriminator A loss', discriminator_B_loss.item(), num_iterations)
+            writer.add_scalar('Discriminator B loss', discriminator_A_loss.item(), num_iterations)
+
+            # for layer in generator_A2B.state_dict():
+            #     print(layer, "\t", generator_A2B.state_dict()[layer])
+            # for layer in generator_B2A.state_dict():
+            #     print(layer, "\t", generator_A2B.state_dict()[layer])
+
 
     if (epoch % 50) == 0:
 
@@ -202,7 +221,16 @@ for epoch in range(num_epochs):
 
                 sp = world_decode_spectral_envelop(fake_B, fs)
                 ap = np.ascontiguousarray(ap_A)
-
+                plt.plot(f0)
+                plt.show()
+                plt.subplot(2,1,1)
+                decoded = world_decode_spectral_envelop(real_A.detach().cpu().numpy()[0,:,:].T*std_A[1:25] + mean_A[1:25],fs)
+                plt.imshow(np.log10(decoded))
+                plt.subplot(2,1,2)
+                plt.imshow(np.log10(sp))
+                plt.show()
+                plt.imshow(ap)
+                plt.show()
                 speech_fake_B = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
 
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
