@@ -9,12 +9,12 @@ import torch
 from torch.utils.data import DataLoader
 from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0
 
-from modules import Generator, Discriminator
+from modules import Generator, Discriminator, ResnetGenerator
 import librosa
 import os
 import itertools
 from torch.nn.functional import l1_loss, mse_loss
-from tf_adam import Adam
+#from tf_adam import Adam
 import numpy as np
 ############## HYPERPARAMETER PART #######################################
 
@@ -62,17 +62,17 @@ train_dataset_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=
 test_dataset_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-generator_A2B = Generator(num_features).to("cuda")
-generator_B2A = Generator(num_features).to("cuda")
+generator_A2B = ResnetGenerator(24, 24).to("cuda")
+generator_B2A = ResnetGenerator(24, 24).to("cuda")
 discriminator_A = Discriminator(1).to("cuda")
 discriminator_B = Discriminator(1).to("cuda")
 
 
 generator_params = [generator_A2B.parameters(), generator_B2A.parameters()]
-generator_optimizer = Adam(itertools.chain(*generator_params),
+generator_optimizer = torch.optim.Adam(itertools.chain(*generator_params),
                                          lr=generator_lr)
 discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
-discriminator_optimizer = Adam(itertools.chain(*discriminator_params),
+discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
                                            lr=discriminator_lr)
 
 #torch.optim.lr_scheduler.StepLR(discriminator_optimizer, step_size=20, gamma=0.2)
@@ -98,6 +98,7 @@ for epoch in range(num_epochs):
 
         real_A = sample[0].permute(0, 2, 1).to("cuda")
         real_B = sample[1].permute(0, 2, 1).to("cuda")
+
         # Speech A -> Speech B -> Speech A
         fake_B = generator_A2B(real_A)
         cycle_A = generator_B2A(fake_B)
