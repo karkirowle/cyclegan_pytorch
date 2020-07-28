@@ -1,2 +1,6 @@
 .idea/
 __pycache__/
+figures/
+figures_failure/
+preprocessed/
+validation_output/

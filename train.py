@@ -62,8 +62,8 @@ train_dataset_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=
 test_dataset_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-generator_A2B = ResnetGenerator(24, 24).to("cuda")
-generator_B2A = ResnetGenerator(24, 24).to("cuda")
+generator_A2B = Generator(24).to("cuda")
+generator_B2A = Generator(24).to("cuda")
 discriminator_A = Discriminator(1).to("cuda")
 discriminator_B = Discriminator(1).to("cuda")
 
@@ -74,10 +74,6 @@ generator_optimizer = torch.optim.Adam(itertools.chain(*generator_params),
 discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
 discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
                                            lr=discriminator_lr)
-
-#torch.optim.lr_scheduler.StepLR(discriminator_optimizer, step_size=20, gamma=0.2)
-#torch.optim.lr_scheduler.StepLR(generator_optimizer, step_size=20, gamma=0.2)
-
 
 for epoch in range(num_epochs):
     print("Epoch ", epoch)
@@ -167,16 +163,19 @@ for epoch in range(num_epochs):
             writer.add_scalar('Discriminator A loss', discriminator_B_loss.item(), num_iterations)
             writer.add_scalar('Discriminator B loss', discriminator_A_loss.item(), num_iterations)
 
-            # for layer in generator_A2B.state_dict():
-            #     print(layer, "\t", generator_A2B.state_dict()[layer])
-            # for layer in generator_B2A.state_dict():
-            #     print(layer, "\t", generator_A2B.state_dict()[layer])
-
-
     if (epoch % 50) == 0:
 
         # Model save
         with torch.no_grad():
+
+            if not os.path.exists("checkpoint"):
+                os.mkdir("checkpoint")
+
+            torch.save(generator_A2B.state_dict(), "checkpoint/generator_A2B.pt")
+            torch.save(generator_B2A.state_dict(), "checkpoint/generator_B2A.pt")
+            torch.save(discriminator_A.state_dict(), "checkpoint/discriminator_A.pt")
+            torch.save(discriminator_B.state_dict(), "checkpoint/discriminator_B.pt")
+
             for i in range(len(SF1_test_data_source)):
 
                 feature_A = SF1_test_data_source[i]
@@ -188,6 +187,7 @@ for epoch in range(num_epochs):
                 f0_B = feature_B[:,0]
                 ap_A = feature_A[:,25:]
                 ap_B = feature_B[:,25:]
+
                 mean_B, std_B = train_dataset.output_meanstd
                 mean_A, std_A = train_dataset.input_meanstd
                 mean_f0_A = mean_A[0]
@@ -255,6 +255,5 @@ for epoch in range(num_epochs):
                 ap = np.ascontiguousarray(ap_A)
 
                 speech_fake_A = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
-
 
                 librosa.output.write_wav(os.path.join(validation_B_dir, filename_B), speech_fake_A, fs)

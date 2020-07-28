@@ -116,6 +116,33 @@ class Downsample2D(Downsample):
         if padding is not None: self.conv.conv.padding = padding
         self.instance_norm = nn.InstanceNorm2d(num_features=out_filter*2,eps=1e-6, affine=True)
 
+class PixelShuffle1D(torch.nn.Module):
+    """
+    1D pixel shuffler. https://arxiv.org/pdf/1609.05158.pdf
+    Upscales sample length, downscales channel length
+    "short" is input, "long" is output
+    """
+    def __init__(self, upscale_factor):
+        super(PixelShuffle1D, self).__init__()
+        self.upscale_factor = upscale_factor
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        short_channel_len = x.shape[1]
+        short_width = x.shape[2]
+
+        long_channel_len = short_channel_len // self.upscale_factor
+        long_width = self.upscale_factor * short_width
+
+        x = x.contiguous().view([batch_size, self.upscale_factor, long_channel_len, short_width])
+        x = x.permute(0, 2, 3, 1).contiguous()
+        x = x.view(batch_size, long_channel_len, long_width)
+
+        return x
+
+
+
+
 
 class PixelShuffler(nn.Module):
 
@@ -124,12 +151,14 @@ class PixelShuffler(nn.Module):
         self.shuffle_size = shuffle_size
 
     def forward(self, x):
-        # TODO: Check notation order. I think tensorflow has (n,w,c), we have (n,c,w)
         n,c,w = x.size()
-        ow = c // self.shuffle_size
-        oc = w * self.shuffle_size
 
-        return torch.reshape(x, shape = [n,ow,oc])
+        ow = w * self.shuffle_size
+        oc = c // self.shuffle_size
+        #ow = c // self.shuffle_size
+        #oc = w * self.shuffle_size
+
+        return torch.reshape(x, shape = [n,oc,ow])
 
 
 class Upsample1D(nn.Module):
@@ -139,11 +168,12 @@ class Upsample1D(nn.Module):
 
         # Outfilter is determined by shuffling factor
         shuffle_size = 2
-        out_filter = in_filter * shuffle_size
-        self.block = nn.Sequential(ConvLayer1D(in_filter,in_filter * 2 ,kernel,stride),
-                                   PixelShuffler(),
-                                   # would be outfilter * 2 but shuffled by 2
-                                   nn.InstanceNorm1d(num_features=out_filter // 2 ,eps=1e-6, affine=True),
+
+        # Filter size decreses by the shuffle size
+        out_filter = in_filter // shuffle_size
+        self.block = nn.Sequential(ConvLayer1D(in_filter,out_filter * shuffle_size * 2 ,kernel,stride),
+                                   PixelShuffle1D(2),
+                                   nn.InstanceNorm1d(num_features=out_filter * 2), # GLU halves, so
                                    nn.GLU(dim=1))
 
     def forward(self, x):
@@ -153,7 +183,7 @@ class Upsample1D(nn.Module):
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
 
-    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+    def __init__(self, dim, norm_layer):
         """Initialize the Resnet block
         A resnet block is a conv block with skip connections
         We construct a conv block with build_conv_block function,
@@ -161,9 +191,9 @@ class ResnetBlock(nn.Module):
         Original Resnet paper: https://arxiv.org/pdf/1512.03385.pdf
         """
         super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
+        self.conv_block = self.build_conv_block(dim, norm_layer)
 
-    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+    def build_conv_block(self, dim, norm_layer):
         """Construct a convolutional block.
         Parameters:
             dim (int)           -- the number of channels in the conv layer.
@@ -174,30 +204,11 @@ class ResnetBlock(nn.Module):
         Returns a conv block (with a conv layer, a normalization layer, and a non-linearity layer (ReLU))
         """
         conv_block = []
-        p = 0
-        if padding_type == 'reflect':
-            conv_block += [nn.ReflectionPad1d(1)]
-        elif padding_type == 'replicate':
-            conv_block += [nn.ReplicationPad1d(1)]
-        elif padding_type == 'zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
 
-        conv_block += [nn.Conv1d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
-        if use_dropout:
-            conv_block += [nn.Dropout(0.5)]
+        p = 1
 
-        p = 0
-        if padding_type == 'reflect':
-            conv_block += [nn.ReflectionPad1d(1)]
-        elif padding_type == 'replicate':
-            conv_block += [nn.ReplicationPad1d(1)]
-        elif padding_type == 'zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv1d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
+        conv_block += [nn.Conv1d(dim, dim*2, kernel_size=3, padding=p), norm_layer(dim*2), nn.GLU(dim=1)]
+        conv_block += [nn.Conv1d(dim, dim, kernel_size=3, padding=p), norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
 
@@ -225,40 +236,37 @@ class ResnetGenerator(nn.Module):
         """
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
-        use_bias=True
-        #if type(norm_layer) == functools.partial:
-        #    use_bias = norm_layer.func == nn.InstanceNorm2d
-        #else:
-        #    use_bias = norm_layer == nn.InstanceNorm2d
 
         model = [nn.ReflectionPad1d(3),
-                 nn.Conv1d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-                 norm_layer(ngf),
+                 nn.Conv1d(input_nc, ngf, kernel_size=7, padding=0),
+                 nn.InstanceNorm1d(ngf),
                  nn.ReLU(True)]
 
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
             mult = 2 ** i
-            model += [nn.Conv1d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * mult * 2),
-                      nn.ReLU(True)]
+            #model += [nn.Conv1d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
+            #          nn.InstanceNorm1d(ngf * mult * 2),
+            #          nn.ReLU(True)]
 
+            # Our model uses larger kernels for no apparent reasons
+            model += [Downsample1D(in_filter=ngf * mult, out_filter=ngf*mult*2,kernel=5,stride=2)]
         mult = 2 ** n_downsampling
         for i in range(n_blocks):       # add ResNet blocks
 
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, norm_layer=nn.InstanceNorm1d)]
 
         for i in range(n_downsampling):  # add upsampling layers
             mult = 2 ** (n_downsampling - i)
-            model += [nn.ConvTranspose1d(ngf * mult, int(ngf * mult / 2),
-                                         kernel_size=3, stride=2,
-                                         padding=1, output_padding=1,
-                                         bias=use_bias),
-                      norm_layer(int(ngf * mult / 2)),
-                      nn.ReLU(True)]
+            #model += [nn.ConvTranspose1d(ngf * mult, int(ngf * mult / 2),
+            #                             kernel_size=3, stride=2,
+            #                             padding=1, output_padding=1),
+            #          nn.InstanceNorm1d(int(ngf * mult / 2)),
+            #          nn.ReLU(True)]
+            model += [Upsample1D(in_filter=ngf * mult,kernel=5)]
+
         model += [nn.ReflectionPad1d(3)]
         model += [nn.Conv1d(ngf, output_nc, kernel_size=7, padding=0)]
-        #model += [nn.Tanh()]
 
         self.model = nn.Sequential(*model)
 
@@ -282,13 +290,12 @@ class Generator(nn.Module):
                                    Downsample1D(in_filter=128, out_filter=256,kernel=5,stride=2),
                                    Downsample1D(in_filter=256, out_filter=512,kernel=5,stride=2),
 
-        # This is eqiuvalent to the 1024, but it's kind of difficult to explain
                                    ResidualBlock1D(in_filter=512,out_filter=512,kernel=3),
-                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
-                                   #ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
 
                                    Upsample1D(in_filter=512,kernel=5),
 
@@ -336,7 +343,6 @@ class Discriminator(nn.Module):
             #nn.ZeroPad2d((3, 2, 0, 1)),
             Downsample2D(in_filter=512, out_filter=1024, kernel=(6, 3), stride=(1, 2)),
             # input: (1 x 1024 x 1 x 1)
-            #Debugger(),
             PermuteBlock(),
             # input?: (1 x 1024)
             nn.Linear(1024, 1)
