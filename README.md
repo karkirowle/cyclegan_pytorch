@@ -4,10 +4,10 @@ This is a reimplementation of CycleGAN-VC in PyTorch.
 
 Main requirements:
 - Python 3.5
-- nnmnkwii
-- PyTorch
-- librosa
-- PyWorld
+- nnmnkwii 0.0.20
+- PyTorch 1.5.0
+- librosa 0.7.2
+- PyWorld 0.2.10
 
 To create the environment use the following command:
 
@@ -26,8 +26,47 @@ The model can be trained with the following command:
 python train.py
 ```
 
+The model can be trained with the following command:
+```bash
+python train.py
+```
+
+Conversion of the utterances can be done through the convert.py file, more detail on the help
+```bash
+
+Convert CycleGAN utterance
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --file_path FILE_PATH
+                        Path of speech file to convert.
+  --output_dir OUTPUT_DIR
+                        Output directory for converted voice.
+  --data_root DATA_ROOT
+                        VCC 2016 dataroot
+  --domain_A            Check if converting from domain A
 
 
+```
+
+### How do I retrain it with my own data?
+
+The current way of training is through nnmnkwii FileDataSource wrapper, see the data_utils.py for an example.
+This can be surprisingly efficient, because many standard speech datasets have a nanamin wrapper, so it essentially
+requires you to inherit the right dataset class and provide the right dataset path. 
+
+You can also implemenet custom wrapper for your own datasets. Please have a thorough look at [relevant documentation of
+nnmnkwii here](https://r9y9.github.io/nnmnkwii/stable/references/datasets.html).
+
+I might implement friendlier support for custom retraining in the future.
+
+### Do you have a pretrained model?
+
+Yes, of course. You can download it from my Google Drive [folder](https://drive.google.com/drive/folders/17pZhPlLDfn_wjJZLfTGKqf9lREHyHNm4?usp=sharing).
+Make a folder called checkpoint and put these there.
+
+### Colab?
+Maybe in the future.
 
 ### Interesting points that I figured out while reimplementing
 - Discriminator is 2D, because authors believe this is better for frequency info (agreed), but
