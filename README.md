@@ -55,7 +55,7 @@ The current way of training is through nnmnkwii FileDataSource wrapper, see the 
 This can be surprisingly efficient, because many standard speech datasets have a nanamin wrapper, so it essentially
 requires you to inherit the right dataset class and provide the right dataset path. 
 
-You can also implemenet custom wrapper for your own datasets. Please have a thorough look at [relevant documentation of
+You can also implement custom wrapper for your own datasets. Please have a thorough look at [relevant documentation of
 nnmnkwii here](https://r9y9.github.io/nnmnkwii/stable/references/datasets.html).
 
 I might implement friendlier support for custom retraining in the future.
@@ -90,17 +90,13 @@ https://discuss.pytorch.org/t/suboptimal-convergence-when-compared-with-tensorfl
 - It seems to be the main focus of tuning in CycleGAN-VC were the kernel sizes and making the generator 1D
 
 
-### Oter stuff
-Things to investigate:
-- Doing GLU in one conv layer and splitting seems to be equivalent to doing with two CONV layers?
+### Other stuff
 - Downsample blocks are stride 2 blocks Conv+Instance Norm blocks
 - Due to the PixelShuffler dimensions divided by two twice, the main constraint seems to be that the input needs to be
 multiples of 4
 - Upsampling is basically at the expense of channel dimensions
-- Residual block have an interesting implementational detail: after the GLU blocks, it projects down the results?
 - Kernel sizes of 5 and 15 are interesting
-- The last few layers of the discriminator seem to be very random
-- Blogpost about GLUs https://leimao.github.io/blog/Gated-Linear-Units/
+- [Blogpost about GLUs](https://leimao.github.io/blog/Gated-Linear-Units/)
 
  
 
