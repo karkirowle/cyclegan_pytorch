@@ -12,8 +12,9 @@ Main requirements:
 To create the environment use the following command:
 
 ```bash
-conda env create -f environment.yml
+conda env create -f environment.yml python=3.5
 ```
+WARNING: If you don't specify 3.5 it will throw an error.
 
 Downloading the VCC2016 dataset is done by first running the following command:
 
