@@ -89,4 +89,3 @@ dependencies:
     - tensorboard==1.14.0
     - tqdm==4.48.0
 prefix: /home/boomkin/miniconda3/envs/cyclegan_pytorch
-
