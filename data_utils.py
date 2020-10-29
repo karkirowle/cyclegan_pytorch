@@ -13,7 +13,7 @@ from torch.utils.data import Dataset
 import torch
 import os
 import matplotlib.pyplot as plt
-
+import librosa.sequence
 
 
 class VCC2016DataSource(VCC2016Super):
@@ -44,6 +44,7 @@ class VCC2016DataSource(VCC2016Super):
             f0, _, sp, ap = world_decompose(wav_padded,sr)
 
             mcep = world_encode_spectral_envelop(sp, sr, dim=24)
+
 
             # Extending to 2D to stack and log zeroes 1e-16. TODO: Better solution for this
             f0 = np.ma.log(f0[:,None])
@@ -85,9 +86,15 @@ class MCEPWrapper(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
+        # The main problem is the misalignment of the audios on this level
+        input_temp = self.input_file_source[idx][:,1:25].T
+        output_temp = self.output_file_source[idx][:,1:25].T
+
+        D, wp = librosa.sequence.dtw(input_temp,output_temp,backtrack=True)
+        input_aligned = input_temp[:,wp[:,0]].T
 
         # This snippet is responsible for sampling the frames
-        frames_A = self.input_file_source[idx].shape[0]
+        frames_A = input_aligned.shape[0]
         assert frames_A >= self.num_frames
 
         start_A = np.random.randint(frames_A - self.num_frames + 1)
@@ -102,29 +109,14 @@ class MCEPWrapper(Dataset):
         # This snippet is responsible for slicing and normalisation
 
         #if self.mfcc_only:
-        input_slice = self.input_file_source[idx][start_A:end_A,1:25]
+        input_slice = input_aligned[start_A:end_A]
         output_slice = self.output_file_source[idx][start_B:end_B, 1:25]
         input_mean, input_std = self.input_meanstd
         output_mean, output_std = self.output_meanstd
         mcep_A_normalised = (input_slice - input_mean[1:25])/input_std[1:25]
-
         mcep_B_normalised = (output_slice - output_mean[1:25])/output_std[1:25]
 
 
-
-        #else:
-            # We return everything, but we still have normalise
-        #    input_slice = self.input_file_source[idx]
-        #    output_slice = self.output_file_source[idx]
-        #    input_mean, input_std = self.input_meanstd
-        #    output_mean, output_std = self.output_meanstd
-        #    input_slice[:,1:25] = (input_slice[:,1:25] - input_mean[1:25])/input_std[1:25]
-        #    output_slice[:,1:25] = (output_slice[:,1:25] - output_mean[1:25])/output_std[1:25]
-        #    input_slice_normalised = input_slice
-        #    output_slice_normalised = output_slice
-
-        # Second index: selecting 24 MCEP features
-        # Third index: randomly samping 128 frames
         input_tensor = torch.FloatTensor(mcep_A_normalised)
         output_tensor = torch.FloatTensor(mcep_B_normalised)
 

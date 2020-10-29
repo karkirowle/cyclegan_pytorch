@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0
 
-from modules import Generator, Discriminator, ResnetGenerator
+from modules import Generator, Discriminator
 import librosa
 import os
 import itertools
@@ -48,6 +48,7 @@ if not os.path.exists(validation_B_dir):
     os.mkdir(validation_B_dir)
 if not os.path.exists("figures"):
     os.mkdir("figures")
+
 SF1_train_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["SF1"],training=True))))
 TF2_train_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["TF2"],training=True))))
 SF1_test_data_source = MemoryCacheDataset(FileSourceDataset((VCC2016DataSource(data_root, ["SF1"],training=False))))
