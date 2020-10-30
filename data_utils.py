@@ -91,7 +91,7 @@ class MCEPWrapper(Dataset):
         output_temp = self.output_file_source[idx][:,1:25].T
 
         D, wp = librosa.sequence.dtw(input_temp,output_temp,backtrack=True)
-        input_aligned = input_temp[:,wp[:,0]].T
+        input_aligned = input_temp[:,wp[::-1,0]].T
 
         # This snippet is responsible for sampling the frames
         frames_A = input_aligned.shape[0]

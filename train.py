@@ -7,9 +7,10 @@ from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
-from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0
-
+from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0, wpindex
+import fastdtw
 from modules import Generator, Discriminator
+import scipy
 import librosa
 import os
 import itertools
@@ -22,7 +23,7 @@ batch_size = 1
 num_epochs = 5000
 num_features = 24
 fs = 16000
-data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+data_root="./data"
 #data_root="./data"
 validation_A_dir="./validation_output/converted_A"
 validation_B_dir="./validation_output/converted_B"
@@ -203,6 +204,17 @@ for epoch in range(num_epochs):
                 mcep_A = (feature_A[None,:,1:25] - mean_mcep_A)/std_mcep_A
                 mcep_B = (feature_B[None,:,1:25] - mean_mcep_B)/std_mcep_B
 
+                # DTW warping the validation
+                #distance, wp = fastdtw.fastdtw(mcep_A[0,:,:], mcep_B[0,:,:], dist=scipy.spatial.distance.euclidean)
+                C, wp = librosa.sequence.dtw(mcep_A[0,:,:].T,mcep_B[0,:,:].T, backtrack=True)
+
+                # TODO: DTW path behaviour is not as I would expect, so I have to use a heuristic for now
+                # At conversion time, we pad because DTW doesn't guarantee the multiplicity needed
+                wp_pad = wpindex(wp[::-1,0], multiple=4)
+                mcep_A = mcep_A[:,wp_pad,:]
+                f0_A = f0_A[wp_pad]
+                ap_A = ap_A[wp_pad,:]
+
                 real_A = torch.FloatTensor(mcep_A).permute(0, 2, 1).to("cuda")
                 real_B = torch.FloatTensor(mcep_B).permute(0, 2, 1).to("cuda")
 
@@ -226,14 +238,10 @@ for epoch in range(num_epochs):
                 ap = np.ascontiguousarray(ap_A)
 
                 # Save figure
-                fig = plt.figure()
-                plt.subplot(2,1,1)
+
                 decoded = world_decode_spectral_envelop(real_A.detach().cpu().numpy()[0,:,:].T*std_A[1:25] + mean_A[1:25],fs)
-                plt.imshow(np.log10(decoded))
-                plt.subplot(2,1,2)
-                plt.imshow(np.log10(sp))
-                plt.savefig(os.path.join("figures",filename_A + "_epoch_" + str(epoch)) + ".png")
-                speech_fake_B = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
+
+                speech_fake_B = np.clip(world_speech_synthesis(f0, sp, ap, fs, frame_period=5),-1,1)
 
                 librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
 
@@ -255,6 +263,6 @@ for epoch in range(num_epochs):
                 sp = world_decode_spectral_envelop(debug_real_A, fs)
                 ap = np.ascontiguousarray(ap_A)
 
-                speech_fake_A = world_speech_synthesis(f0, sp, ap, fs, frame_period=5)
+                speech_fake_A = np.clip(world_speech_synthesis(f0, sp, ap, fs, frame_period=5),-1,1)
 
                 librosa.output.write_wav(os.path.join(validation_B_dir, filename_B), speech_fake_A, fs)

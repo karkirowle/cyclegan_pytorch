@@ -138,6 +138,16 @@ def coded_sp_padding(coded_sp, multiple=4):
     return coded_sp_padded
 
 
+def wpindex(wpindex, multiple=4):
+    num_frames = len(wpindex)
+    num_frames_padded = int(np.ceil(num_frames / multiple)) * multiple
+    num_frames_diff = num_frames_padded - num_frames
+    wpindex_padded = np.pad(wpindex, (0, num_frames_diff), 'constant', constant_values=wpindex[-1])
+    return wpindex_padded
+
+
+
+
 def wav_padding(wav, sr, frame_period, multiple=4):
     assert wav.ndim == 1
     num_frames = len(wav)
