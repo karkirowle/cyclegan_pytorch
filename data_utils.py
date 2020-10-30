@@ -36,7 +36,7 @@ class VCC2016DataSource(VCC2016Super):
         save_path = os.path.join(self.preprocess_dir, self.speaker, os.path.basename(file_path))
 
         if os.path.exists(save_path):
-            features = np.load(save_path)
+            features = np.load(save_path, allow_pickle=True)
         else:
 
             wav, _ = librosa.load(file_path, sr=sr, mono=True)
