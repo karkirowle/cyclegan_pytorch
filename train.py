@@ -20,8 +20,11 @@ import numpy as np
 from nnmnkwii.autograd import modspec
 import argparse
 
-def train(dtw, modspec_loss):
+def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
     ############## HYPERPARAMETER PART #######################################
+
+    os.makedirs(validation_A_dir, exist_ok=True)
+    os.makedirs(validation_B_dir, exist_ok=True)
 
     batch_size = 1
     num_epochs = 1000
@@ -29,8 +32,8 @@ def train(dtw, modspec_loss):
     fs = 16000
     data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
     #data_root="./data"
-    validation_A_dir="./validation_output/converted_A"
-    validation_B_dir="./validation_output/converted_B"
+
+
 
     generator_lr = 0.0002
     generator_lr_decay = generator_lr / 200000
@@ -289,12 +292,25 @@ def train(dtw, modspec_loss):
 
 if __name__ == '__main__':
 
+    validation_A_dir_default="./validation_output_debug/converted_A"
+    validation_B_dir_default="./validation_output_debug/converted_B"
+
     parser = argparse.ArgumentParser(description = 'Train CycleGAN model for datasets.')
     parser.add_argument('--dtw', action='store_true')
     parser.add_argument('--modspec', action='store_true')
+
+    parser.add_argument('--validation_A_dir',
+                        type = str,
+                        help = 'Convert validation A after each training epoch. ', default = validation_A_dir_default)
+    parser.add_argument('--validation_B_dir',
+                        type = str,
+                        help = 'Convert validation B after each training epoch. ', default = validation_B_dir_default)
 
     argv = parser.parse_args()
 
     print("dtw",argv.dtw)
     print("modspec",argv.modspec)
-    train(argv.dtw, argv.modspec)
+    print("validation A", argv.validation_A_dir)
+    print("validation B", argv.validation_B_dir)
+
+    train(argv.dtw, argv.modspec,argv.validation_A_dir,argv.validation_B_dir)
