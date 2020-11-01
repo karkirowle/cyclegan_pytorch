@@ -30,8 +30,8 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
     num_epochs = 1000
     num_features = 24
     fs = 16000
-    data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
-    #data_root="./data"
+    #data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+    data_root="./data"
 
 
 
@@ -139,14 +139,14 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
             if modspec_loss:
                 modspec_b_loss = mse_loss(modspec(real_B.squeeze(0).T.cpu()), modspec(fake_B.squeeze(0).T.cpu()))
                 modspec_a_loss = mse_loss(modspec(real_A.squeeze(0).T.cpu()), modspec(fake_A.squeeze(0).T.cpu()))
-                modspec_loss = 0.0001 * (modspec_a_loss/2 + modspec_b_loss/2)
+                modspec_loss_val = 0.0001 * (modspec_a_loss/2 + modspec_b_loss/2)
 
 
             generator_optimizer.zero_grad()
             if modspec_loss:
                 # TODO: For some reason mod_spec has to be backpropped separately
                 generator_loss.backward(retain_graph=True)
-                modspec_loss.backward()
+                modspec_loss_val.backward()
             else:
                 generator_loss.backward()
             generator_optimizer.step()
@@ -176,8 +176,9 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
                       " Cycle loss: ", cycle_loss.item(),
                       " Identity loss: ", identity_loss.item(),
                       " Discriminator A loss: ", discriminator_A_loss.item(),
-                      " Discriminator B loss: ", discriminator_B_loss.item(),
-                      " Modspec lkoss", modspec_loss.item())
+                      " Discriminator B loss: ", discriminator_B_loss.item(), end="")
+                if modspec_loss:
+                    print(" Modspec loss", modspec_loss.item())
                 writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
                 writer.add_scalar('Discriminator loss', discriminator_loss.item(), num_iterations)
                 writer.add_scalar('Cycle loss', cycle_loss.item(), num_iterations)
