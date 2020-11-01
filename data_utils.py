@@ -60,13 +60,14 @@ class MCEPWrapper(Dataset):
     """
     Wrapper around nnmnkwii datsets
     """
-    def __init__(self,input_file_source,output_file_source, mfcc_only, num_frames=128, norm_calc=True):
+    def __init__(self,input_file_source,output_file_source, mfcc_only, num_frames=128, norm_calc=True,dtw=False):
         self.input_file_source = input_file_source
         self.output_file_source = output_file_source
         self.num_frames = num_frames
         self.mfcc_only = mfcc_only
         self.input_meanstd = None
         self.output_meanstd = None
+        self.dtw = dtw
 
         if norm_calc:
             print("Performing speaker 1 normalization...")
@@ -87,46 +88,42 @@ class MCEPWrapper(Dataset):
             idx = idx.tolist()
 
         # The main problem is the misalignment of the audios on this level
-        input_temp = self.input_file_source[idx][:,1:25].T
-        output_temp = self.output_file_source[idx][:,1:25].T
+        input_temp = self.input_file_source[idx][:,1:25]
+        output_temp = self.output_file_source[idx][:,1:25]
 
-        D, wp = librosa.sequence.dtw(input_temp,output_temp,backtrack=True)
-        input_aligned = input_temp[:,wp[::-1,0]].T
 
+        if self.dtw:
+            # Transposed because it accepts transposed form only
+            D, wp = librosa.sequence.dtw(input_temp.T,output_temp.T,backtrack=True)
+            input_temp = input_temp[wp[::-1,0],:]
         # This snippet is responsible for sampling the frames
-        frames_A = input_aligned.shape[0]
-        assert frames_A >= self.num_frames
+        frames_a = input_temp.shape[0]
+        assert frames_a >= self.num_frames
 
-        start_A = np.random.randint(frames_A - self.num_frames + 1)
-        end_A = start_A + self.num_frames
+        start_a = np.random.randint(frames_a - self.num_frames + 1)
+        end_a = start_a + self.num_frames
 
-
-        frames_B = self.output_file_source[idx].shape[0]
-        assert frames_B >= self.num_frames
-        start_B = np.random.randint(frames_B - self.num_frames + 1)
-        end_B = start_B + self.num_frames
+        frames_b = self.output_file_source[idx].shape[0]
+        assert frames_b >= self.num_frames
+        start_b = np.random.randint(frames_b - self.num_frames + 1)
+        end_b = start_b + self.num_frames
 
         # This snippet is responsible for slicing and normalisation
 
-        #if self.mfcc_only:
-        input_slice = input_aligned[start_A:end_A]
-        output_slice = self.output_file_source[idx][start_B:end_B, 1:25]
+        input_slice = input_temp[start_a:end_a,:]
+        output_slice = output_temp[start_b:end_b,:]
         input_mean, input_std = self.input_meanstd
         output_mean, output_std = self.output_meanstd
-        mcep_A_normalised = (input_slice - input_mean[1:25])/input_std[1:25]
-        mcep_B_normalised = (output_slice - output_mean[1:25])/output_std[1:25]
+        mcep_a_normalised = (input_slice - input_mean[1:25])/input_std[1:25]
+        mcep_b_normalised = (output_slice - output_mean[1:25])/output_std[1:25]
 
+        input_tensor = torch.FloatTensor(mcep_a_normalised)
+        output_tensor = torch.FloatTensor(mcep_b_normalised)
 
-        input_tensor = torch.FloatTensor(mcep_A_normalised)
-        output_tensor = torch.FloatTensor(mcep_B_normalised)
+        filename_a = list(self.input_file_source.dataset.collected_files[idx])
+        filename_b = list(self.output_file_source.dataset.collected_files[idx])
 
-        filename_A = list(self.input_file_source.dataset.collected_files[idx])
-        filename_B = list(self.output_file_source.dataset.collected_files[idx])
-
-        #other = OtherParameters(f0_A,f0_B,bap_A,bap_B)
-
-
-        return (input_tensor, output_tensor, filename_A, filename_B)
+        return input_tensor, output_tensor, filename_a, filename_b
 
 
 if __name__ == '__main__':
