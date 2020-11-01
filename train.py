@@ -179,6 +179,8 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
                       " Discriminator B loss: ", discriminator_B_loss.item(), end="")
                 if modspec_loss:
                     print(" Modspec loss", modspec_loss.item())
+                else:
+                    print("")
                 writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
                 writer.add_scalar('Discriminator loss', discriminator_loss.item(), num_iterations)
                 writer.add_scalar('Cycle loss', cycle_loss.item(), num_iterations)
