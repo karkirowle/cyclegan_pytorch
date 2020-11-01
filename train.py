@@ -178,7 +178,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
                       " Discriminator A loss: ", discriminator_A_loss.item(),
                       " Discriminator B loss: ", discriminator_B_loss.item(), end="")
                 if modspec_loss:
-                    print(" Modspec loss", modspec_loss.item())
+                    print(" Modspec loss", modspec_loss_val.item())
                 else:
                     print("")
                 writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
@@ -224,7 +224,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
                     std_mcep_A = std_A[1:25]
                     std_mcep_B = std_B[1:25]
 
-                    mcep_A = (feature_A[None,:,1:25] - mean_mcep_A)/std_mcep_A        #other = OtherParameters(f0_A,f0_B,bap_A,bap_B)
+                    mcep_A = (feature_A[None,:,1:25] - mean_mcep_A)/std_mcep_A
 
                     mcep_B = (feature_B[None,:,1:25] - mean_mcep_B)/std_mcep_B
 
