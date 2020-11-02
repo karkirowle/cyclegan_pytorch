@@ -20,7 +20,8 @@ import numpy as np
 from nnmnkwii.autograd import modspec
 import argparse
 
-def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
+
+def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
     ############## HYPERPARAMETER PART #######################################
 
     os.makedirs(validation_A_dir, exist_ok=True)
@@ -120,12 +121,22 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir):
             antispoof_B = discriminator_B(fake_B.unsqueeze(1))
 
             # Loss functions
-            cycle_A_loss = l1_loss(cycle_A, real_A)
-            cycle_B_loss = l1_loss(cycle_B, real_B)
+
+            if l2:
+                cycle_A_loss = mse_loss(cycle_A, real_A)
+                cycle_B_loss = mse_loss(cycle_B, real_B)
+            else:
+                cycle_A_loss = l1_loss(cycle_A, real_A)
+                cycle_B_loss = l1_loss(cycle_B, real_B)
+
             cycle_loss = cycle_A_loss + cycle_B_loss
 
-            identity_A_loss = l1_loss(identity_A, real_A)
-            identity_B_loss = l1_loss(identity_B, real_B)
+            if l2:
+                identity_A_loss = mse_loss(identity_A, real_A)
+                identity_B_loss = mse_loss(identity_B, real_B)
+            else:
+                identity_A_loss = l1_loss(identity_A, real_A)
+                identity_B_loss = l1_loss(identity_B, real_B)
             identity_loss = identity_A_loss + identity_B_loss
 
             # When backpropagating for the generator, we want the discriminator to be cheated
@@ -301,6 +312,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description = 'Train CycleGAN model for datasets.')
     parser.add_argument('--dtw', action='store_true')
     parser.add_argument('--modspec', action='store_true')
+    parser.add_argument('--l2', action='store_true')
+
 
     parser.add_argument('--validation_A_dir',
                         type = str,
@@ -313,7 +326,9 @@ if __name__ == '__main__':
 
     print("dtw",argv.dtw)
     print("modspec",argv.modspec)
+    print("l2 cycle consistencyc",argv.modspec)
+
     print("validation A", argv.validation_A_dir)
     print("validation B", argv.validation_B_dir)
 
-    train(argv.dtw, argv.modspec,argv.validation_A_dir,argv.validation_B_dir)
+    train(argv.dtw, argv.modspec,argv.validation_A_dir,argv.validation_B_dir, argv.l2)
