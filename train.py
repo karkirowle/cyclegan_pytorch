@@ -32,8 +32,8 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
     num_epochs = 1000
     num_features = 24
     fs = 16000
-    data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
-    #data_root="./data"
+    #data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+    data_root="./data"
 
 
 
