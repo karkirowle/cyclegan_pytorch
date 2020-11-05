@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0, wpindex
 import fastdtw
-from modules import Generator, Discriminator
+from modules import Generator, Discriminator, Modern_DBLSTM_1
 import scipy
 import librosa
 import os
@@ -20,6 +20,7 @@ import numpy as np
 from nnmnkwii.autograd import modspec
 import argparse
 
+import sys
 
 def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
     ############## HYPERPARAMETER PART #######################################
@@ -31,8 +32,8 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
     num_epochs = 1000
     num_features = 24
     fs = 16000
-    #data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
-    data_root="./data"
+    data_root="/home/boomkin/repos/Voice_Converter_CycleGAN/data"
+    #data_root="./data"
 
 
 
@@ -77,11 +78,16 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
     discriminator_A = Discriminator(1).to("cuda")
     discriminator_B = Discriminator(1).to("cuda")
 
+    art_discriminator_A = Discriminator(1).to("cuda")
+    art_discriminator_B = Discriminator(1).to("cuda")
+
+    art_extractor = torch.load("articulatory_model/sarticulatory_model_pz.pt")
 
     generator_params = [generator_A2B.parameters(), generator_B2A.parameters()]
     generator_optimizer = torch.optim.Adam(itertools.chain(*generator_params),
                                              lr=generator_lr)
-    discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters()]
+    discriminator_params = [discriminator_A.parameters(), discriminator_B.parameters(), art_discriminator_A.parameters(),
+                            art_discriminator_B.parameters()]
     discriminator_optimizer = torch.optim.Adam(itertools.chain(*discriminator_params),
                                                lr=discriminator_lr)
     for epoch in range(num_epochs):
@@ -120,61 +126,64 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
             antispoof_A = discriminator_A(fake_A.unsqueeze(1))
             antispoof_B = discriminator_B(fake_B.unsqueeze(1))
 
-            # Loss functions
+            # Articulatory spoofing
+            art_fake_A = art_extractor(fake_A.permute(0,2,1))
+            art_fake_B = art_extractor(fake_B.permute(0,2,1))
 
-            if l2:
-                cycle_A_loss = mse_loss(cycle_A, real_A)
-                cycle_B_loss = mse_loss(cycle_B, real_B)
-            else:
-                cycle_A_loss = l1_loss(cycle_A, real_A)
-                cycle_B_loss = l1_loss(cycle_B, real_B)
+            art_antispoof_A = art_discriminator_A(art_fake_A.permute(0,2,1).unsqueeze(1))
+            art_antispoof_B = art_discriminator_B(art_fake_B.permute(0,2,1).unsqueeze(1))
 
+
+            # Cycle consistency loss
+            cycle_A_loss = l1_loss(cycle_A, real_A)
+            cycle_B_loss = l1_loss(cycle_B, real_B)
             cycle_loss = cycle_A_loss + cycle_B_loss
 
-            if l2:
-                identity_A_loss = mse_loss(identity_A, real_A)
-                identity_B_loss = mse_loss(identity_B, real_B)
-            else:
-                identity_A_loss = l1_loss(identity_A, real_A)
-                identity_B_loss = l1_loss(identity_B, real_B)
+            # Identity consistency loss
+            identity_A_loss = l1_loss(identity_A, real_A)
+            identity_B_loss = l1_loss(identity_B, real_B)
             identity_loss = identity_A_loss + identity_B_loss
 
             # When backpropagating for the generator, we want the discriminator to be cheated
             generation_loss = mse_loss(antispoof_A, torch.ones_like(antispoof_A)*true_label) + \
-                mse_loss(antispoof_B, torch.ones_like(antispoof_B)*true_label)
+                mse_loss(antispoof_B, torch.ones_like(antispoof_B)*true_label) + \
+                mse_loss(art_antispoof_A, torch.ones_like(art_antispoof_A)*true_label) + \
+                mse_loss(art_antispoof_B, torch.ones_like(art_antispoof_B)*true_label)
 
 
 
             generator_loss = lambda_cycle * cycle_loss + lambda_identity * identity_loss + generation_loss
 
-            if modspec_loss:
-                modspec_b_loss = mse_loss(modspec(real_B.squeeze(0).T.cpu()), modspec(fake_B.squeeze(0).T.cpu()))
-                modspec_a_loss = mse_loss(modspec(real_A.squeeze(0).T.cpu()), modspec(fake_A.squeeze(0).T.cpu()))
-                modspec_loss_val = 0.0001 * (modspec_a_loss/2 + modspec_b_loss/2)
-
-
             generator_optimizer.zero_grad()
-            if modspec_loss:
-                # TODO: For some reason mod_spec has to be backpropped separately
-                generator_loss.backward(retain_graph=True)
-                modspec_loss_val.backward()
-            else:
-                generator_loss.backward()
-            generator_optimizer.step()
+            generator_loss.backward()
             generator_optimizer.step()
 
             d_real_A = discriminator_A(real_A.unsqueeze(1))
             d_fake_A = discriminator_A(generator_B2A(real_B).unsqueeze(1))
+            art_d_real_A = art_discriminator_A(art_extractor(real_A.permute(0,2,1)).permute(0,2,1).unsqueeze(1))
+            art_d_fake_A = art_discriminator_A(art_extractor(generator_B2A(real_B).permute(0,2,1)).permute(0,2,1).unsqueeze(1))
+
 
             d_real_B = discriminator_B(real_B.unsqueeze(1))
             d_fake_B = discriminator_B(generator_A2B(real_A).unsqueeze(1))
+            art_d_real_B = art_discriminator_B(art_extractor(real_B.permute(0,2,1)).permute(0,2,1).unsqueeze(1))
+            art_d_fake_B = art_discriminator_B(art_extractor(generator_A2B(real_A).permute(0,2,1)).permute(0,2,1).unsqueeze(1))
+
 
             # When backpropagating for the discriminator, we want the discriminator to be powerful
             discriminator_A_loss = mse_loss(d_real_A, torch.ones_like(d_real_A)*true_label)/4 + \
                 mse_loss(d_fake_A, torch.ones_like(d_fake_A)*fake_label)/4
             discriminator_B_loss = mse_loss(d_real_B, torch.ones_like(d_real_B)*true_label)/4 + \
                 mse_loss(d_fake_B, torch.ones_like(d_fake_B)*fake_label)/4
-            discriminator_loss = discriminator_A_loss + discriminator_B_loss
+            art_discriminator_A_loss = mse_loss(art_d_real_A, torch.ones_like(art_d_real_A)*true_label)/4 + \
+                mse_loss(art_d_fake_A, torch.ones_like(art_d_fake_A)*fake_label)/4
+            art_discriminator_B_loss = mse_loss(art_d_real_B, torch.ones_like(art_d_real_B)*true_label)/4 + \
+                mse_loss(art_d_fake_B, torch.ones_like(art_d_fake_B)*fake_label)/4
+
+            discriminator_loss = discriminator_A_loss + \
+                                 discriminator_B_loss + \
+                                 art_discriminator_A_loss + \
+                                 art_discriminator_B_loss
 
             discriminator_optimizer.zero_grad()
             discriminator_loss.backward()
@@ -187,11 +196,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                       " Cycle loss: ", cycle_loss.item(),
                       " Identity loss: ", identity_loss.item(),
                       " Discriminator A loss: ", discriminator_A_loss.item(),
-                      " Discriminator B loss: ", discriminator_B_loss.item(), end="")
-                if modspec_loss:
-                    print(" Modspec loss", modspec_loss_val.item())
-                else:
-                    print("")
+                      " Discriminator B loss: ", discriminator_B_loss.item())
                 writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
                 writer.add_scalar('Discriminator loss', discriminator_loss.item(), num_iterations)
                 writer.add_scalar('Cycle loss', cycle_loss.item(), num_iterations)

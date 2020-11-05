@@ -4,3 +4,5 @@ figures/
 figures_failure/
 preprocessed/
 validation_output/
+articulatory_model/mngu0_ema_all/
+articulatory_model/mngu0_wav_all/
