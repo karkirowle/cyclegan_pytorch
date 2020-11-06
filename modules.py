@@ -168,6 +168,10 @@ class Generator(nn.Module):
                                    ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
                                    ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
                                    ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   # adding three extra blocks
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
+                                   ResidualBlock1D(in_filter=512, out_filter=512, kernel=3),
 
                                    Upsample1D(in_filter=512,kernel=5),
 
@@ -185,7 +189,7 @@ class Generator(nn.Module):
             feat = layer(feat)
             # Basically: Input (before), Conv layer, First ResNet, middle ResNet. Original paper also has second conv
             # at the beginning, for now, we don't have that
-            if layer_id in [0,6,8]:
+            if layer_id in [0,6,8,12]:
                 feats.append(feat)
 
         out = feat

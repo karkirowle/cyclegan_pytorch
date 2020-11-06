@@ -18,8 +18,9 @@ from torch.nn.functional import l1_loss, mse_loss
 #from tf_adam import Adam
 import numpy as np
 from nnmnkwii.autograd import modspec
+from nnmnkwii.metrics import melcd
 import argparse
-
+import time
 import sys
 
 def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
@@ -95,6 +96,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                                                lr=discriminator_lr)
     for epoch in range(num_epochs):
         print("Epoch ", epoch)
+        start = time.time()
         for i,sample in enumerate(train_dataset_loader):
 
             # Learning rate adjustment snippet
@@ -175,6 +177,9 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
             discriminator_loss.backward()
             discriminator_optimizer.step()
 
+            end = time.time()
+
+            elapsed = end - start
             if (i % 50) == 0:
                 print("Iteration ", num_iterations,
                       " Generator loss: ", generator_loss.item(),
@@ -184,7 +189,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                 writer.add_scalar('Generator loss', generator_loss.item(), num_iterations)
                 writer.add_scalar('Discriminator loss', discriminator_loss.item(), num_iterations)
 
-
+        print ("Epoch took {} secs".format(elapsed))
         if (epoch % 50) == 0:
 
             # Model save
@@ -197,7 +202,7 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                 #torch.save(generator_B2A.state_dict(), "checkpoint/generator_B2A.pt")
                 torch.save(discriminator.state_dict(), "checkpoint/discriminator_A.pt")
                 #torch.save(discriminator_B.state_dict(), "checkpoint/discriminator_B.pt")
-
+                mcd = 0
                 for i in range(len(SF1_test_data_source)):
 
                     feature_A = SF1_test_data_source[i]
@@ -260,6 +265,9 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                     sp = world_decode_spectral_envelop(fake_B, fs)
                     ap = np.ascontiguousarray(ap_A)
 
+                    gt_sp = world_decode_spectral_envelop(np.ascontiguousarray(feature_B[:,1:25]).astype(np.float64),fs)
+
+
                     # Save figure
 
                     decoded = world_decode_spectral_envelop(real_A.detach().cpu().numpy()[0,:,:].T*std_A[1:25] + mean_A[1:25],fs)
@@ -267,6 +275,16 @@ def train(dtw, modspec_loss,validation_A_dir, validation_B_dir, l2):
                     speech_fake_B = np.clip(world_speech_synthesis(f0, sp, ap, fs, frame_period=5),-1,1)
 
                     librosa.output.write_wav(os.path.join(validation_A_dir, filename_A), speech_fake_B, fs)
+
+                    # Truncation for melcd
+                    if sp.shape[0] > gt_sp.shape[0]:
+                        sp = sp[:gt_sp.shape[0],:]
+                    else:
+                        gt_sp = gt_sp[:sp.shape[0],:]
+
+                    mcd += melcd(sp, gt_sp)
+                mcd = mcd/len(SF1_test_data_source)
+                print("MCD: ", mcd, " dB")
 
 
 
