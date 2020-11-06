@@ -98,6 +98,7 @@ class MCEPWrapper(Dataset):
             input_temp = input_temp[wp[::-1,0],:]
         # This snippet is responsible for sampling the frames
         frames_a = input_temp.shape[0]
+
         assert frames_a >= self.num_frames
 
         start_a = np.random.randint(frames_a - self.num_frames + 1)

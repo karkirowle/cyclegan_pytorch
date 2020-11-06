@@ -1,4 +1,3 @@
-
 import torch.nn as nn
 import torch
 import math
@@ -177,7 +176,21 @@ class Generator(nn.Module):
                                    )
 
     def forward(self, x):
-        return self.block(x)
+
+        feats = []
+        feat = x
+        feats.append(feat)
+
+        for layer_id, layer in enumerate(self.block):
+            feat = layer(feat)
+            # Basically: Input (before), Conv layer, First ResNet, middle ResNet. Original paper also has second conv
+            # at the beginning, for now, we don't have that
+            if layer_id in [0,6,8]:
+                feats.append(feat)
+
+        out = feat
+
+        return feats, out
 
 class PermuteBlock(nn.Module):
     def __init__(self):
@@ -247,7 +260,159 @@ class Modern_DBLSTM_1(nn.Module):
         return out
 
 
+class PatchNCELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction='none')
+        # bool because we have torch 1.5.0
+        self.mask_dtype = torch.bool
+        self.nce_t = 0.07 # TODO: HARDCODED HIDDEN TEMPERATURE
+
+    def forward(self, feat_q, feat_k):
+        batchSize = feat_q.shape[0]
+        dim = feat_q.shape[1]
+        feat_k = feat_k.detach()
+
+        # pos logit
+        l_pos = torch.bmm(feat_q.view(batchSize, 1, -1), feat_k.view(batchSize, -1, 1))
+        l_pos = l_pos.view(batchSize, 1)
+
+        # neg logit
+
+        # Should the negatives from the other samples of a minibatch be utilized?
+        # In CUT and FastCUT, we found that it's best to only include negatives
+        # from the same image. Therefore, we set
+        # --nce_includes_all_negatives_from_minibatch as False
+        # However, for single-image translation, the minibatch consists of
+        # crops from the "same" high-resolution image.
+        # Therefore, we will include the negatives from the entire minibatch.
+        batch_dim_for_bmm = 1
+
+        # reshape features to batch size
+        feat_q = feat_q.view(batch_dim_for_bmm, -1, dim)
+        feat_k = feat_k.view(batch_dim_for_bmm, -1, dim)
+        npatches = feat_q.size(1)
+        l_neg_curbatch = torch.bmm(feat_q, feat_k.transpose(2, 1))
+
+        # diagonal entries are similarity between same features, and hence meaningless.
+        # just fill the diagonal with very small number, which is exp(-10) and almost zero
+        diagonal = torch.eye(npatches, device=feat_q.device, dtype=self.mask_dtype)[None, :, :]
+        l_neg_curbatch.masked_fill_(diagonal, -10.0)
+        l_neg = l_neg_curbatch.view(-1, npatches)
+
+        out = torch.cat((l_pos, l_neg), dim=1) / self.nce_t
+
+        loss = self.cross_entropy_loss(out, torch.zeros(out.size(0), dtype=torch.long,
+                                                        device=feat_q.device))
+
+        return loss
+
+
+class Normalize(nn.Module):
+
+    def __init__(self, power=2):
+        super(Normalize, self).__init__()
+        self.power = power
+
+    def forward(self, x):
+        norm = x.pow(self.power).sum(1, keepdim=True).pow(1. / self.power)
+        out = x.div(norm + 1e-7)
+        return out
+
+
+class PatchSampleF(nn.Module):
+    """
+
+    Sampling and projection to the embedding space
+    How do sample patches
+    """
+    def __init__(self, nc=256, gpu_ids=[]):
+        # potential issues: currently, we use the same patch_ids for multiple images in the batch
+        super(PatchSampleF, self).__init__()
+        self.l2norm = Normalize(2)
+        self.nc = nc  # hard-coded
+
+        self.gpu_ids = gpu_ids
+
+        self.mlp = nn.Sequential(*[nn.Linear(1, self.nc), nn.ReLU(), nn.Linear(self.nc, self.nc)])
+        self.mlp.cuda()
+        #self.mlp = None
+
+    def forward(self, feats, num_patches=64, patch_ids=None):
+        return_ids = []
+        return_feats = []
+
+        for i, feat in enumerate(feats):
+            # stepping through each feature-levels
+            feat = feat.unsqueeze(0)
+            # we deal with an  (N x C x H x W)
+            feat_reshape = feat.permute(0, 2, 3, 1).flatten(1, 2)
+
+            #print(feat_reshape.shape)
+            # (N x C x H x W) -> (N x H x W x C) -> (N x HW x C)
+            hw = feat_reshape.shape[1]
+            # we then compress it to
+
+            if patch_ids is None:
+                patch_id = torch.randperm(hw)
+                patch_id = patch_id[:num_patches]  # .to(patch_ids.device)
+            else:
+                patch_id = patch_ids[i]
+
+            x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
+
+            x_sample = self.mlp(x_sample)
+
+            x_sample = self.l2norm(x_sample)
+
+            return_feats.append(x_sample)
+            return_ids.append(patch_id)
+        return return_feats, return_ids
+
+
+    def calculate_NCE_loss(self, src, tgt):
+        n_layers = len(self.nce_layers)
+
+        # feat_q generator features
+        feat_q = self.netG(tgt, self.nce_layers, encode_only=True)
+
+        # lets assume no equivariance and other fireworks
+
+        feat_k = self.netG(src, self.nce_layers, encode_only=True)
+
+
+
+        feat_k_pool, sample_ids = self.netF(feat_k, self.opt.num_patches, None)
+        feat_q_pool, _ = self.netF(feat_q, self.opt.num_patches, sample_ids)
+
+        total_nce_loss = 0.0
+        for f_q, f_k, crit, nce_layer in zip(feat_q_pool, feat_k_pool, self.criterionNCE, self.nce_layers):
+            loss = crit(f_q, f_k) * self.opt.lambda_NCE
+            total_nce_loss += loss.mean()
+
+        return total_nce_loss / n_layers
+
+
 
 if __name__ == '__main__':
+    from PIL import Image
+    from torchvision import transforms
+    import matplotlib.pyplot as plt
+    image = Image.open("example.jpg")
 
-    print("")
+    #print(image)
+    pil_to_tensor = transforms.ToTensor()(image)
+    #image = torch.tensor(image)
+
+    #print(pil_to_tensor.shape)
+    #plt.imshow(pil_to_tensor[0,:,:].squeeze(0))
+    #plt.show()
+
+    print(pil_to_tensor.shape)
+
+    #( I x N x C x H x W)
+    feats = pil_to_tensor.unsqueeze(0).unsqueeze(0)
+    print(feats.shape)
+    #feats = torch.rand((10,10,10,10,10))
+    out = PatchSampleF()(feats)
+    #print(out)
