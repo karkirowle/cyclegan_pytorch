@@ -1,7 +1,143 @@
+import matplotlib.pyplot as plt
 import librosa
 import numpy as np
 import os
 import pyworld
+from scipy.interpolate import interp1d
+from sklearn import preprocessing
+import pycwt as wavelet
+
+
+def get_continuos_f0(f0):
+    """CONVERT F0 TO CONTINUOUS F0
+
+    Args:
+        f0 (ndarray): original f0 sequence with the shape (T)
+
+    Return:
+        (ndarray): continuous f0 with the shape (T)
+    """
+    # get uv information as binary
+    uv = np.float32(f0 != 0)
+
+    # get start and end of f0
+    if (f0 == 0).all():
+        print("all of the f0 values are 0.")
+        return uv, f0
+    start_f0 = f0[f0 != 0][0]
+    end_f0 = f0[f0 != 0][-1]
+
+    # padding start and end of f0 sequence
+    start_idx = np.where(f0 == start_f0)[0][0]
+    end_idx = np.where(f0 == end_f0)[0][-1]
+    f0[:start_idx] = start_f0
+    f0[end_idx:] = end_f0
+
+    # get non-zero frame index
+    nz_frames = np.where(f0 != 0)[0]
+
+    # perform linear interpolation
+    f = interp1d(nz_frames, f0[nz_frames])
+    cont_f0 = f(np.arange(0, f0.shape[0]))
+
+    return uv, cont_f0
+
+
+def get_continous_log_f0(f0, frame_period=5.0):
+    uv, continous_f0 = get_continuos_f0(f0)
+    # cont_f0_lpf = low_pass_filter(cont_f0_lpf, int(1.0 / (frame_period * 0.001)), cutoff=20)
+    return uv, np.log(continous_f0)
+
+
+def get_log_f0_cwt(log_f0):
+    wavelet_ = wavelet.MexicanHat()
+    dt = 0.005
+    dj = 1
+    s0 = dt*2
+    J = 9
+    # C_delta = 3.541
+    w, sj, freqs, coi, fft, fftfreqs = wavelet.cwt(
+        np.squeeze(log_f0), dt, dj, s0, J, wavelet_)
+    w = np.real(w).T
+   # Wavelet_le = np.real(Wavelet_le).T   # (T, D=10)
+  # 0lf0_le_cwt = np.concatenate((Wavelet_lf0, Wavelet_le), -1)
+  #  iwave = wavelet.icwt(np.squeeze(lf0), scales, dt, dj, mother) * std
+    return w, sj
+
+
+def inverse_cwt(W, sj):
+    log_f0_rec = np.zeros([W.shape[0], len(sj)])
+    for i in range(0, len(sj)):
+        log_f0_rec[:, i] = W[:, i]*((i+1+2.5)**(-2.5))
+    log_f0_rec_sum = np.sum(log_f0_rec, axis=1)
+    log_f0_rec_sum = preprocessing.scale(log_f0_rec_sum)
+    return log_f0_rec_sum
+
+
+def norm_scale(W):
+    W_norm = np.zeros((W.shape[0], W.shape[1]))
+    mean = np.zeros((1, W.shape[1]))  # [1,10]
+    std = np.zeros((1, W.shape[1]))
+    for scale in range(W.shape[1]):
+        mean[:, scale] = W[:, scale].mean()
+        std[:, scale] = W[:, scale].std()
+        W_norm[:, scale] = (
+            W[:, scale]-mean[:, scale])/std[:, scale]
+
+    return W_norm, mean, std
+
+
+def compute_log_f0_cwt_norm(f0, mean, std):
+    uv, f0_log = get_continous_log_f0(f0)
+    f0_log_norm = (f0_log - mean) / std
+
+    f0_log_cwt, scales = get_log_f0_cwt(f0_log_norm)  # [560,10]
+    f0_log_cwt_norm, mean_scale, std_scale = norm_scale(
+        f0_log_cwt)  # [560,10],[1,10],[1,10]
+
+    # f0_log_cwt_norm.append(f0_log_cwt_norm)
+
+    return f0_log_cwt_norm, uv, scales, mean_scale, std_scale
+
+
+def get_log_f0_cwt_norm(f0s, mean, std):
+
+    uvs = list()
+    cont_lf0_lpfs = list()
+    cont_lf0_lpf_norms = list()
+    Wavelet_lf0s = list()
+    Wavelet_lf0s_norm = list()
+    scaless = list()
+
+    means = list()
+    stds = list()
+    for f0 in f0s:
+
+        uv, cont_lf0_lpf = get_continous_log_f0(f0)
+        cont_lf0_lpf_norm = (cont_lf0_lpf - mean) / std
+
+        Wavelet_lf0, scales = get_log_f0_cwt(cont_lf0_lpf_norm)  # [560,10]
+        Wavelet_lf0_norm, mean_scale, std_scale = norm_scale(
+            Wavelet_lf0)  # [560,10],[1,10],[1,10]
+
+        Wavelet_lf0s_norm.append(Wavelet_lf0_norm)
+        uvs.append(uv)
+        cont_lf0_lpfs.append(cont_lf0_lpf)
+        cont_lf0_lpf_norms.append(cont_lf0_lpf_norm)
+        Wavelet_lf0s.append(Wavelet_lf0)
+        scaless.append(scales)
+        means.append(mean_scale)
+        stds.append(std_scale)
+
+    return Wavelet_lf0s_norm, scaless, means, stds
+
+
+def denormalize(w_norm, mean, std):
+    w = np.zeros(
+        (w_norm.shape[0], w_norm.shape[1]))
+    for scale in range(w_norm.shape[1]):
+        w[:, scale] = w_norm[:, scale]*std[:, scale]+mean[:, scale]
+    return w
 
 
 def load_wavs(wav_dir, sr):
@@ -18,7 +154,8 @@ def load_wavs(wav_dir, sr):
 def world_decompose(wav, fs, frame_period=5.0):
     # Decompose speech signal into f0, spectral envelope and aperiodicity using WORLD
     wav = wav.astype(np.float64)
-    f0, timeaxis = pyworld.harvest(wav, fs, frame_period=frame_period, f0_floor=71.0, f0_ceil=800.0)
+    f0, timeaxis = pyworld.harvest(
+        wav, fs, frame_period=frame_period, f0_floor=71.0, f0_ceil=800.0)
     sp = pyworld.cheaptrick(wav, f0, timeaxis, fs)
     ap = pyworld.d4c(wav, f0, timeaxis, fs)
 
@@ -51,8 +188,10 @@ def world_encode_data(wavs, fs, frame_period=5.0, coded_dim=24):
     coded_sps = list()
 
     for wav in wavs:
-        f0, timeaxis, sp, ap = world_decompose(wav=wav, fs=fs, frame_period=frame_period)
-        coded_sp = world_encode_spectral_envelop(sp=sp, fs=fs, dim=coded_dim)
+        f0, timeaxis, sp, ap = world_decompose(
+            wav=wav, fs=fs, frame_period=frame_period)
+        coded_sp = world_encode_spectral_envelop(
+            sp=sp, fs=fs, dim=coded_dim)
         f0s.append(f0)
         timeaxes.append(timeaxis)
         sps.append(sp)
@@ -105,7 +244,8 @@ def coded_sps_normalization_fit_transoform(coded_sps):
 
     coded_sps_normalized = list()
     for coded_sp in coded_sps:
-        coded_sps_normalized.append((coded_sp - coded_sps_mean) / coded_sps_std)
+        coded_sps_normalized.append(
+            (coded_sp - coded_sps_mean) / coded_sps_std)
 
     return coded_sps_normalized, coded_sps_mean, coded_sps_std
 
@@ -113,7 +253,8 @@ def coded_sps_normalization_fit_transoform(coded_sps):
 def coded_sps_normalization_transoform(coded_sps, coded_sps_mean, coded_sps_std):
     coded_sps_normalized = list()
     for coded_sp in coded_sps:
-        coded_sps_normalized.append((coded_sp - coded_sps_mean) / coded_sps_std)
+        coded_sps_normalized.append(
+            (coded_sp - coded_sps_mean) / coded_sps_std)
 
     return coded_sps_normalized
 
@@ -133,7 +274,8 @@ def coded_sp_padding(coded_sp, multiple=4):
     num_frames_diff = num_frames_padded - num_frames
     num_pad_left = num_frames_diff // 2
     num_pad_right = num_frames_diff - num_pad_left
-    coded_sp_padded = np.pad(coded_sp, ((0, 0), (num_pad_left, num_pad_right)), 'constant', constant_values=0)
+    coded_sp_padded = np.pad(
+        coded_sp, ((0, 0), (num_pad_left, num_pad_right)), 'constant', constant_values=0)
 
     return coded_sp_padded
 
@@ -143,13 +285,21 @@ def wav_padding(wav, sr, frame_period, multiple=4):
     num_frames = len(wav)
     num_frames_padded = int(
         (np.ceil((np.floor(num_frames / (sr * frame_period / 1000)) + 1) / multiple + 1) * multiple - 1) * (
-                    sr * frame_period / 1000))
+            sr * frame_period / 1000))
     num_frames_diff = num_frames_padded - num_frames
     num_pad_left = num_frames_diff // 2
     num_pad_right = num_frames_diff - num_pad_left
-    wav_padded = np.pad(wav, (num_pad_left, num_pad_right), 'constant', constant_values=0)
+    wav_padded = np.pad(wav, (num_pad_left, num_pad_right),
+                        'constant', constant_values=0)
 
     return wav_padded
+
+
+def wp_padding(wp, multiple=4):
+    num_frames = len(wp)
+    num_frames_padded = int(np.ceil(num_frames / multiple)) * multiple
+    num_frames_diff = num_frames_padded - num_frames
+    return np.pad(wp, ((num_frames_diff // 2, num_frames_diff - (num_frames_diff // 2)), (0, 0)), 'edge')
 
 
 def logf0_statistics(f0s):
@@ -159,7 +309,7 @@ def logf0_statistics(f0s):
 
     return log_f0s_mean, log_f0s_std
 
-import matplotlib.pyplot as plt
+
 def pitch_conversion_with_logf0(logf0, mean_log_src, std_log_src, mean_log_target, std_log_target):
     """Because we saved the masked values we need this more complicated version with logical indexing"""
 
@@ -171,7 +321,8 @@ def pitch_conversion_with_logf0(logf0, mean_log_src, std_log_src, mean_log_targe
 
 def pitch_conversion(f0, mean_log_src, std_log_src, mean_log_target, std_log_target):
     # Logarithm Gaussian normalization for Pitch Conversions
-    f0_converted = np.exp((np.log(f0) - mean_log_src) / std_log_src * std_log_target + mean_log_target)
+    f0_converted = np.exp((np.ma.log(f0) - mean_log_src) /
+                          std_log_src * std_log_target + mean_log_target)
 
     return f0_converted
 
@@ -188,7 +339,8 @@ def wavs_to_specs(wavs, n_fft=1024, hop_length=None):
 def wavs_to_mfccs(wavs, sr, n_fft=1024, hop_length=None, n_mels=128, n_mfcc=24):
     mfccs = list()
     for wav in wavs:
-        mfcc = librosa.feature.mfcc(y=wav, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, n_mfcc=n_mfcc)
+        mfcc = librosa.feature.mfcc(
+            y=wav, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, n_mfcc=n_mfcc)
         mfccs.append(mfcc)
 
     return mfccs
@@ -235,4 +387,3 @@ def sample_train_data(dataset_A, dataset_B, n_frames=128):
 
     train_data_A = np.array(train_data_A)
     train_data_B = np.array(train_data_B)
-

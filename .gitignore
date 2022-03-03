@@ -4,3 +4,16 @@ figures/
 figures_failure/
 preprocessed/
 validation_output/
+backup/
+checkpoint/
+data/
+models/
+results/
+sbatch/
+sbatch_new/
+slurms/
+old/
+result/
+results_new/
+runs/
+samples/
