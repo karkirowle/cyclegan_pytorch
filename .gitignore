@@ -17,3 +17,5 @@ result/
 results_new/
 runs/
 samples/
+articulatory_model/
+validation_output_*/
