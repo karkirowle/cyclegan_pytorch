@@ -1,8 +1,4 @@
-
-from datetime import datetime
-
 from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
-import matplotlib.pyplot as plt
 import torch
 from utils import world_decode_spectral_envelop, world_speech_synthesis, compute_log_f0_cwt_norm, denormalize, inverse_cwt
 
@@ -14,7 +10,7 @@ import numpy as np
 import soundfile as sf
 
 from uaspeech import available_speakers, UASpeechDataSource
-from cyclegan import CycleGAN
+from models.cyclegan import CycleGAN
 from mcep_wrapper import MCEPWrapper
 from f0_wrapper import F0Wrapper
 
@@ -26,6 +22,19 @@ CACHE_ROOT = os.path.join("preprocessed", "UASpeech")
 class UASpeechTraining:
 
     def __init__(self, experiment, cache_name, num_features, dtw, parallel, twostep, load_f0=False, load_mcep=False, sr=16000):
+        """
+
+        :param experiment: name of the experiment
+        :param cache_name: feature dir
+        :param num_features: Num MCEP features
+        :param dtw: bool whether to use DTW
+        :param parallel: bool whether to do parallel training or not
+        :param twostep: bool to include two-step adversarial loss
+        :param load_f0:
+        :param load_mcep:
+        :param sr:
+        """
+
         self.experiment = experiment
         self.data_root = UASPEECH_ROOT
         self.cache_dir = os.path.join(CACHE_ROOT, cache_name) or CACHE_ROOT

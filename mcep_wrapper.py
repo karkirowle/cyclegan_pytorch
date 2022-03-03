@@ -1,5 +1,3 @@
-from nnmnkwii.datasets.vcc2016 import WavFileDataSource as VCC2016Super
-from nnmnkwii.datasets import FileSourceDataset
 from nnmnkwii.preprocessing import meanstd
 
 import librosa

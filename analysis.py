@@ -20,6 +20,13 @@ SAMPLES_ROOT = join("samples")
 
 
 def samples(cache_dir, speakers, num_features):
+    """
+
+    :param cache_dir: directory where features are stored
+    :param speakers: list of speakers to use
+    :param num_features: MCEP feature dimension
+    :return:
+    """
 
     speakers.sort()
 
@@ -29,20 +36,20 @@ def samples(cache_dir, speakers, num_features):
         UASpeechDataSource(DATA_ROOT, cache_dir, speakers, training=False)))
 
     for i in range(len(output_set)):
+
         features = output_set[i]
-        filename = basename(
-            output_set.dataset.collected_files[i][0])
-        print(filename)
+        filename = basename(output_set.dataset.collected_files[i][0])
+
+        # 
         f0 = np.ascontiguousarray(features[:, 0])
         sp = world_decode_spectral_envelop(
             np.ascontiguousarray(features[:, 1:num_features+1]), 16000)
         ap = np.ascontiguousarray(features[:, (num_features+1):])
-        wav = world_speech_synthesis(
-            f0, sp, ap, 16000, frame_period=5)
-        # librosa.output.write_wav(join(
-        #     SAMPLES_ROOT, filename), wav, 16000)
-        sf.write(join(
-            SAMPLES_ROOT, filename), wav, 16000)
+
+        #
+        wav = world_speech_synthesis(f0, sp, ap, 16000, frame_period=5)
+        sf.write(join(SAMPLES_ROOT, filename), wav, 16000)
+
     for i in range(len(input_set)):
         features = input_set[i]
         filename = basename(

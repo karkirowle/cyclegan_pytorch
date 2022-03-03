@@ -3,12 +3,10 @@ import pandas as pd
 import torch
 import argparse
 import re
-import noisereduce as nr
 import librosa
 
 from os.path import join, splitext, isdir, basename
 from os import listdir
-from modules import Generator, Discriminator
 from espnet_model_zoo.downloader import ModelDownloader
 from espnet2.bin.asr_inference import Speech2Text
 from jiwer import wer

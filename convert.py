@@ -3,7 +3,7 @@ from data_utils import VCC2016DataSource, MCEPWrapper
 from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
 import torch
 
-from modules import Generator
+from models.modules import Generator
 from utils import *
 import numpy as np
 import argparse

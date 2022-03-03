@@ -1,11 +1,7 @@
 from typing import Callable, List
 from nnmnkwii.datasets import FileDataSource
-
 import librosa
 import numpy as np
-import matplotlib.pyplot as plt
-
-from utils import world_decompose, world_encode_spectral_envelop, wav_padding
 
 import os
 import re
@@ -34,6 +30,20 @@ class UASpeechDataSource(FileDataSource):
                  validating=False,
                  num_features=24,
                  preprocess_function: Callable[[List[float]], np.ndarray]=None):
+        """
+
+        Class constructor for management of the UASpeech dataset
+
+        :param data_root: Location of the UASpeech root on your disk
+        :param cache_dir: Place to save the features
+        :param speakers: List of speakers to include in the data source
+        :param labelmap: Dictionary assigning an interger label to speaker (TODO: Not sure if this used/needed)
+        :param max_files: Limits the number of files to use (works on a single speaker)
+        :param training: (TODO: Does not seem to actually correspond to training/testing, rather control/validation)
+        :param validating: (TODO: Does not seem to be useful, should be deprecated)
+        :param num_features: number of MCEP features to extract using the WORLD vocoder, recommended to leave at 24
+        :param preprocess_function: Python function which takes an audio and returns a feature
+        """
 
         for speaker in speakers:
             if speaker not in available_speakers:
@@ -61,8 +71,13 @@ class UASpeechDataSource(FileDataSource):
 
 
     def collect_files(self):
+        """
+        Collects the files eligible based on the public members of the class constructor
+        :return:
+        """
         speaker_dirs = [join(self.data_root, x)
-                        for x in self.speakers] if self.training else [join(self.data_root, 'C' + x) for x in self.speakers]
+                        for x in self.speakers] \
+            if self.training else [join(self.data_root, 'C' + x) for x in self.speakers]
         paths = []
         labels = []
 
@@ -70,11 +85,11 @@ class UASpeechDataSource(FileDataSource):
             max_files_per_speaker = None
         else:
             max_files_per_speaker = self.max_files // len(self.speakers)
+
         for (i, d) in enumerate(speaker_dirs):
             if not isdir(d):
                 raise RuntimeError("{} doesn't exist.".format(d))
             files = [join(speaker_dirs[i], f) for f in listdir(d)]
-            # files = list(filter(lambda x: splitext(x)[1] == ".wav", files))
             files = list(filter(lambda x: wav_filter(basename(x)), files))
             files = sorted(files)
             files = files[: max_files_per_speaker]
@@ -87,10 +102,15 @@ class UASpeechDataSource(FileDataSource):
         return paths
 
     def collect_features(self, file_path):
+        """
+        Extracts the MCEP features or loads the MCEP features from a file
+
+        :param file_path: full file path to the audio wave
+        :return:
+        """
 
         sr = 16000
-        save_path = os.path.join(
-            self.cache_dir, basename(file_path))
+        save_path = os.path.join(self.cache_dir, basename(file_path))
 
         if os.path.exists(save_path):
             features = np.load(save_path, allow_pickle=True)
@@ -102,10 +122,4 @@ class UASpeechDataSource(FileDataSource):
             else:
                 raise Exception("Data has not been preprocessed yet, please preprocess data first.")
             
-            # f0, _, sp, ap = world_decompose(wav, sr)
-            # mcep = world_encode_spectral_envelop(sp, sr, dim=self.num_features)
-
-            # features = np.hstack((f0[:, None], mcep, ap))
-            # features.dump(save_path)
-
         return features

@@ -1,11 +1,6 @@
-
-import nnmnkwii
-from datetime import datetime
-
 from nnmnkwii.datasets import FileSourceDataset, MemoryCacheDataset
-import matplotlib.pyplot as plt
 import torch
-from utils import world_decode_spectral_envelop, world_speech_synthesis, pitch_conversion_with_logf0, compute_log_f0_cwt_norm, denormalize, inverse_cwt
+from utils import world_decode_spectral_envelop, world_speech_synthesis, compute_log_f0_cwt_norm, denormalize, inverse_cwt
 
 import librosa
 import os
@@ -20,7 +15,7 @@ import re
 from uaspeech import available_speakers, UASpeechDataSource
 from mcep_wrapper import MCEPWrapper
 
-from cyclegan import CycleGAN
+from models.cyclegan import CycleGAN
 from f0_wrapper import F0Wrapper
 
 DATA_ROOT = "/tudelft.net/staff-bulk/ewi/insy/SpeechLab/corpora/UASpeech_2"
